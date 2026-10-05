@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@ftomoda/spectra-design-system": "file:../spectra-design-system",
+    "@ftomoda/spectra-design-system": "file:vendor/ftomoda-spectra-design-system-0.1.0.tgz",
     "lucide-react": "^1.46.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -24,5 +24,8 @@
     "oxlint": "^1.69.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.0"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
