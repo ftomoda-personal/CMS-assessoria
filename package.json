@@ -1,5 +1,5 @@
 {
-  "name": "vite-reference",
+  "name": "xpto-cms",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@ftomoda/spectra-design-system": "file:../spectra-design-system",
+    "lucide-react": "^1.46.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

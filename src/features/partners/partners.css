@@ -1,0 +1,8 @@
+.partner-list { position: relative; display: flex; flex-direction: column; align-items: stretch; min-width: 1302px; min-height: calc(100svh - var(--spacing-16) - var(--stroke-default) - 2 * var(--spacing-8)); }
+.partner-list-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.partner-list-header p { padding-top: var(--spacing-1); font-weight: var(--typography-label-lg-font-weight); }
+.partner-search { padding-block: var(--spacing-4); }
+.partner-search-field { width: 320px; }
+.partner-filters { padding-block: var(--spacing-2); }
+.partner-list-footer { margin-top: auto; margin-inline: calc(-1 * var(--spacing-12)); margin-bottom: calc(-1 * var(--spacing-8)); padding: var(--spacing-4) var(--spacing-12); border-top: var(--stroke-default) solid var(--color-foundation-border); }
+.partner-empty-summary { color: var(--color-content-foreground-muted); }
