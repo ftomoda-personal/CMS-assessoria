@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-For a production build and local preview, run `npm run build` then `npm run preview`. No custom application environment variables are currently required.
+For a production build and local preview, run `npm run build` then `npm run preview`. Before starting development or building for browser use, copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Missing values stop application startup. See [Phase 11A](docs/phase-11a-supabase-client.md).
 
 CMS consumes the immutable npm package `vendor/ftomoda-spectra-design-system-0.1.0.tgz` through a repository-relative `file:` dependency. A sibling Spectra checkout is not required to install or build CMS. The artifact contains compiled JavaScript, TypeScript declarations and `tokens.css`; all existing public imports are preserved. Spectra's separate repository remains the source of truth. Vite retains React/React DOM deduplication; no components are forked into CMS source.
 
@@ -29,7 +29,7 @@ For each future release:
 
 ## Vercel deployment
 
-Use Framework Preset **Vite**, Root Directory **repository root (`.`)**, Install Command **`npm ci`**, Build Command **`npm run build`**, Output Directory **`dist`**, and Node.js **24.x**. Vite/build/output and npm should be detected automatically; explicitly overriding install with `npm ci` enforces lockfile consistency. Ensure the vendored package and lockfile are committed before a Git deployment. No registry credentials or Supabase environment variables are needed.
+Use Framework Preset **Vite**, Root Directory **repository root (`.`)**, Install Command **`npm ci`**, Build Command **`npm run build`**, Output Directory **`dist`**, and Node.js **24.x**. Vite/build/output and npm should be detected automatically; explicitly overriding install with `npm ci` enforces lockfile consistency. Ensure the vendored package and lockfile are committed before a Git deployment. No registry credentials are needed. Browser startup now requires the public `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` build-time values; deployment configuration is deferred.
 
 The root `vercel.json` rewrites unmatched application paths to `/index.html` so direct access and refresh work for all six History API route patterns. Existing static files continue to be served normally. Local Vite preview supplies a similar SPA fallback, but does not validate Vercel's deployed routing. No custom domain is hardcoded; the same build works at a `.vercel.app` origin and a future custom domain.
 

@@ -1,3 +1,5 @@
+// Validate required public configuration before rendering the application.
+import "./lib/supabase/config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@ftomoda/spectra-design-system/tokens.css";
