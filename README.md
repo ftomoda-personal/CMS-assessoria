@@ -1,6 +1,6 @@
 # XPTO CMS
 
-React 19 + TypeScript + Vite. The application provides the shell, theme, six routes and a working Offer List backed by session-only mocks. Create Offer and Edit Offer are implemented. Partner List and Create Partner are implemented; Edit Partner remains a placeholder. See [Phase 3](docs/phase-3-create-offer.md) and [Phase 4](docs/phase-4-edit-offer.md) for the current form flows and verification.
+React 19 + TypeScript + Vite. The application provides the shell, theme, six routes and a working Offer List backed by session-only mocks. Create Offer and Edit Offer are implemented. Partner List, Create Partner and Edit Partner are implemented. Partner status is derived from all existing Offer associations. See [Phase 8](docs/phase-8-edit-partner.md) for editing, deletion and session-history rules. See [Phase 3](docs/phase-3-create-offer.md) and [Phase 4](docs/phase-4-edit-offer.md) for the current form flows and verification.
 
 ## Local development
 
@@ -33,7 +33,7 @@ Use Framework Preset **Vite**, Root Directory **repository root (`.`)**, Install
 
 The root `vercel.json` rewrites unmatched application paths to `/index.html` so direct access and refresh work for all six History API route patterns. Existing static files continue to be served normally. Local Vite preview supplies a similar SPA fallback, but does not validate Vercel's deployed routing. No custom domain is hardcoded; the same build works at a `.vercel.app` origin and a future custom domain.
 
-This first live environment uses in-memory mocks. Offer/Partner changes and theme reset on a full reload. Partner logo upload is a timed browser simulation: `blob:` URLs belong to the loaded session, are not uploaded to a server, and are not permanent links. The developer filename-triggered upload failure is disabled in production. Admin/avatar is static UI; authentication, backend and persistent storage remain future work. Edit Partner remains a placeholder. See [Partner List](docs/phase-5-partner-list.md) and [Create Partner](docs/phase-6-create-partner.md) for the implemented flows.
+This first live environment uses in-memory mocks. Offer/Partner changes and theme reset on a full reload. Partner logo upload is a timed browser simulation: `blob:` URLs belong to the loaded session, are not uploaded to a server, and are not permanent links. The developer filename-triggered upload failure is disabled in production. Admin/avatar is static UI; authentication, backend and persistent storage remain future work. Partner deletion is restricted to Partners with no available Offer association history; database-level enforcement remains future work. See [Partner List](docs/phase-5-partner-list.md) and [Create Partner](docs/phase-6-create-partner.md) for the implemented flows.
 
 The stylesheet is imported through `@ftomoda/spectra-design-system/tokens.css` in `src/main.tsx`. Inter and Barlow Condensed load through Google Fonts in `index.html`; network access is required for those fonts.
 
@@ -75,4 +75,4 @@ A filtered empty result uses one text row and a zero summary without pagination.
 
 Create navigates to `/offers/new`; Edit navigates to `/offers/:offerId/edit` through the existing History API. Theme changes are available in the Navbar before Admin/avatar, using the existing provider. The temporary placeholder control has been removed.
 
-At the end of Phase 2, forms, activation/deactivation/deletion and Toast/Dialog orchestration were not implemented; Phases 3 and 4 now provide those Offer flows. Phases 5 and 6 now provide Partner List/Create and simulated logo upload; Edit Partner, backend and authentication remain pending. Draft creation rules, status transitions, search semantics, final page size and administrative responsive/empty designs remain product decisions.
+At the end of Phase 2, forms, activation/deactivation/deletion and Toast/Dialog orchestration were not implemented; Phases 3 and 4 now provide those Offer flows. Phases 5 and 6 now provide Partner List/Create and simulated logo upload; Phase 8 now provides Edit Partner and guarded deletion; backend and authentication remain pending. Draft creation rules, status transitions, search semantics, final page size and administrative responsive/empty designs remain product decisions.

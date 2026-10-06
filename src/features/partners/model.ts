@@ -1,4 +1,4 @@
-/** Administrative state, independent of the partner's offers. */
+/** Presentation derived from all existing Offer associations. Never persisted. */
 export type PartnerStatus = "active" | "inactive";
 export interface Partner {
   readonly id: string;
@@ -7,5 +7,6 @@ export interface Partner {
   readonly logoUrl?: string;
   /** Blob URLs belong only to this browser session; never production storage. */
   readonly logoKind?: "session-object-url";
-  readonly status: PartnerStatus;
+  /** Original filename for static/session logo presentation. */
+  readonly logoName?: string;
 }

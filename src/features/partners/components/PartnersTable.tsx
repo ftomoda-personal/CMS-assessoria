@@ -1,10 +1,10 @@
 import { IconButton, StatusBadge, Table, TableHeader, TableHeaderRow, TableHeaderCell, TableBody, TableRow, TableCell } from "@ftomoda/spectra-design-system";
 import { Pencil } from "lucide-react";
 import { navigate } from "../../../app/routes";
-import type { Partner } from "../model";
+import type { ListedPartner } from "../list";
 import type { countPartnerOffers } from "../list";
 
-export function PartnersTable({ partners, counts }: { partners: readonly Partner[]; counts: ReturnType<typeof countPartnerOffers> }) {
+export function PartnersTable({ partners, counts }: { partners: readonly ListedPartner[]; counts: ReturnType<typeof countPartnerOffers> }) {
   return <Table aria-label="Parceiros" style={{ tableLayout: "fixed" }}>
     <colgroup><col style={{ width: 160 }} /><col /><col style={{ width: 160 }} /><col style={{ width: 160 }} /><col style={{ width: 160 }} /><col style={{ width: 160 }} /></colgroup>
     <TableHeader><TableHeaderRow>

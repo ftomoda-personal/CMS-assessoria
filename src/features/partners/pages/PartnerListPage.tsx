@@ -5,7 +5,7 @@ import { PageHeader } from "../../../components/PageHeader";
 import { navigate } from "../../../app/routes";
 import { offerRepository } from "../../offers/repository";
 import { partnerRepository } from "../repository";
-import { countPartnerOffers, filterPartners, listFilters, PAGE_SIZE, searchPartners } from "../list";
+import { countPartnerOffers, derivePartners, filterPartners, listFilters, PAGE_SIZE, searchPartners } from "../list";
 import type { PartnerFilter } from "../list";
 import { PartnersTable } from "../components/PartnersTable";
 import "../partners.css";
@@ -17,7 +17,7 @@ export function PartnerListPage({ notice, onDismissNotice }: { notice: PartnerNo
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PartnerFilter>("all");
   const [page, setPage] = useState(() => notice ? Math.floor(Math.max(0, partners.findIndex(partner => partner.id === notice.partnerId)) / PAGE_SIZE) + 1 : 1);
-  const searched = searchPartners(partners, query);
+  const searched = searchPartners(derivePartners(partners, offers), query);
   const filtered = filterPartners(searched, filter);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const currentPage = Math.min(page, Math.max(1, totalPages));

@@ -56,6 +56,7 @@ export const offerRepository = {
     const next = exists
       ? snapshot.offers.map(current => current.id === offer.id ? freezeOffer(offer) : current)
       : [...snapshot.offers, freezeOffer(offer)];
+    partnerRepository.rememberOfferAssociation(offer.partnerId);
     snapshot = Object.freeze({ ...snapshot, offers: Object.freeze(next) });
     listeners.forEach(listener => listener());
   },
