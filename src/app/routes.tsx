@@ -16,8 +16,31 @@ function subscribe(listener: () => void) {
   return () => window.removeEventListener("popstate", listener);
 }
 
+export function useLocation() {
+  return useSyncExternalStore(subscribe, () => window.location.pathname + window.location.search + window.location.hash);
+}
+
+function hasUnsafeCharacters(value: string) {
+  return [...value].some(character => character === "\\" || character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127);
+}
+
+/** Only known CMS paths are eligible for a post-login destination. */
+export function safeCmsDestination(destination: string | null): string | null {
+  if (!destination || !destination.startsWith("/") || destination.startsWith("//") || hasUnsafeCharacters(destination)) return null;
+  try {
+    const url = new URL(destination, window.location.origin);
+    if (url.origin !== window.location.origin || !routes.some(route => route.pattern.test(url.pathname))) return null;
+    const decoded = decodeURIComponent(url.pathname);
+    if (hasUnsafeCharacters(decoded) || decoded.includes("//")) return null;
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return null;
+  }
+}
+
 export function useRoute() {
-  const pathname = useSyncExternalStore(subscribe, () => window.location.pathname);
+  const location = useLocation();
+  const pathname = location.split(/[?#]/)[0];
   const route = routes.find(route => route.pattern.test(pathname));
   if (route?.page !== "offer-edit" && route?.page !== "partner-edit") return route;
   const idKey = route.page === "offer-edit" ? "offerId" : "partnerId";
@@ -28,8 +51,9 @@ export function useRoute() {
   }
 }
 
-export function navigate(url: string) {
-  window.history.pushState(null, "", url);
+export function navigate(url: string, options: { replace?: boolean } = {}) {
+  if (options.replace) window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 

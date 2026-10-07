@@ -1,0 +1,90 @@
+.auth-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  color: var(--color-content-foreground-muted);
+}
+.login-page {
+  font-family: var(--font-family-body);
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-6) var(--spacing-12);
+  background: linear-gradient(rgb(48 48 48 / 25%), rgb(48 48 48 / 25%)), url('../../assets/Corredores ao Amanhecer na Cidade.png') center / cover;
+  color: var(--color-content-foreground);
+  color-scheme: dark;
+}
+.login-card {
+  width: 476px;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  padding: var(--spacing-4) var(--spacing-5);
+  background: var(--color-foundation-background);
+  border: var(--stroke-default) solid var(--color-foundation-border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(7.5px);
+}
+.login-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  padding-block: var(--spacing-4);
+}
+.login-brand img { flex: 0 0 82px; width: 82px; height: 96px; }
+.login-brand > div { min-width: 0; }
+.login-card h1, .login-card h2, .login-card p { margin: 0; }
+.login-brand h1, .login-intro h2 {
+  font-family: var(--font-family-heading);
+  font-weight: 500;
+}
+.login-brand h1 { font-size: var(--typography-heading-xl-font-size); line-height: var(--typography-heading-xl-line-height); }
+.login-intro h2 { font-size: var(--typography-heading-md-font-size); line-height: var(--typography-heading-md-line-height); }
+.login-brand p, .login-intro p {
+  margin-top: var(--spacing-2);
+  font-size: var(--typography-body-md-font-size);
+  line-height: var(--typography-body-md-line-height);
+}
+.login-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-6) var(--spacing-3);
+  min-width: 0;
+}
+.login-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  padding-block: var(--spacing-4);
+}
+.login-inputs .spectra-input { width: 100%; }
+.login-error { color: var(--color-semantics-error); font-size: var(--typography-body-sm-font-size); line-height: var(--typography-body-sm-line-height); }
+.login-actions { padding-top: var(--spacing-6); padding-bottom: var(--spacing-2); }
+.login-actions .spectra-button { width: 100%; }
+.login-loader { animation: login-spin 1s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .login-loader { animation: none; } }
+@media (max-width: 600px) {
+  .login-page { padding: var(--spacing-6) var(--spacing-4); background: var(--color-foundation-background); }
+  .login-card { width: 100%; gap: var(--spacing-4); background: var(--color-foundation-surface-strong); }
+  .login-brand { padding: 0; }
+  .login-brand h1, .login-intro h2 { font-size: var(--typography-heading-sm-font-size); line-height: var(--typography-heading-sm-line-height); }
+  .login-brand p, .login-intro p { font-size: var(--typography-body-sm-font-size); line-height: var(--typography-body-sm-line-height); }
+  .login-intro p { width: calc(100% + 4px); }
+  .login-inputs .spectra-input__field { height: 32px; padding-inline: var(--spacing-2); }
+  .login-inputs .spectra-input__label {
+    font-size: var(--typography-label-sm-font-size);
+    line-height: var(--typography-label-sm-line-height);
+  }
+  .login-inputs .spectra-input__control {
+    font-size: var(--typography-caption-font-size);
+    line-height: var(--typography-caption-line-height);
+  }
+}
+@media (min-width: 601px) {
+  .login-brand p { white-space: nowrap; }
+}

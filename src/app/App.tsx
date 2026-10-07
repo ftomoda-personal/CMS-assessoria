@@ -12,6 +12,7 @@ import { AppLayout } from "./layout/AppLayout";
 import { useRoute } from "./routes";
 import { ThemeProvider } from "./theme";
 import { AuthProvider } from "./auth";
+import { AuthRouteBoundary } from "./AuthRouteBoundary";
 import { OfferListPage } from "../features/offers/pages/OfferListPage";
 
 function Application() {
@@ -34,5 +35,5 @@ function Application() {
 }
 
 export default function App() {
-  return <ThemeProvider><AuthProvider><Application /></AuthProvider></ThemeProvider>;
+  return <ThemeProvider><AuthProvider><AuthRouteBoundary><Application /></AuthRouteBoundary></AuthProvider></ThemeProvider>;
 }
