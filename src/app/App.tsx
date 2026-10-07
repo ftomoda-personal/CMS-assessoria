@@ -11,6 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { AppLayout } from "./layout/AppLayout";
 import { useRoute } from "./routes";
 import { ThemeProvider } from "./theme";
+import { AuthProvider } from "./auth";
 import { OfferListPage } from "../features/offers/pages/OfferListPage";
 
 function Application() {
@@ -33,5 +34,5 @@ function Application() {
 }
 
 export default function App() {
-  return <ThemeProvider><Application /></ThemeProvider>;
+  return <ThemeProvider><AuthProvider><Application /></AuthProvider></ThemeProvider>;
 }
