@@ -13,7 +13,7 @@ npm run dev
 
 For a production build and local preview, run `npm run build` then `npm run preview`. Before starting development or building for browser use, copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Missing values stop application startup. See [Phase 11A](docs/phase-11a-supabase-client.md).
 
-CMS consumes the immutable npm package `vendor/ftomoda-spectra-design-system-0.1.0.tgz` through a repository-relative `file:` dependency. A sibling Spectra checkout is not required to install or build CMS. The artifact contains compiled JavaScript, TypeScript declarations and `tokens.css`; all existing public imports are preserved. Spectra's separate repository remains the source of truth. Vite retains React/React DOM deduplication; no components are forked into CMS source.
+CMS consumes the immutable npm package `vendor/ftomoda-spectra-design-system-0.1.1.tgz` through a repository-relative `file:` dependency. A sibling Spectra checkout is not required to install or build CMS. The artifact contains compiled JavaScript, TypeScript declarations and `tokens.css`; all existing public imports are preserved. Spectra's separate repository remains the source of truth. Vite retains React/React DOM deduplication; no components are forked into CMS source.
 
 ## Updating Spectra
 
