@@ -1,9 +1,42 @@
-import { IconButton, Navbar } from "@ftomoda/spectra-design-system";
-import { Moon, Sun } from "lucide-react";
+import { useRef, useState } from "react";
+import { Button, IconButton, Navbar, Toast } from "@ftomoda/spectra-design-system";
+import { LogOut, Moon, Sun } from "lucide-react";
 import { useTheme } from "../useTheme";
+import { useAuth } from "../useAuth";
+import { navigate } from "../routes";
+import { supabase } from "../../lib/supabase/client";
 
 export function CmsNavigation({ section }: { section?: string }) {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
+  const email = user?.email ?? "Conta autenticada";
+  const initial = Array.from(user?.email?.trim() ?? "")[0]?.toLocaleUpperCase("pt-BR") ?? "?";
+  const pendingRef = useRef(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
+
+  async function handleSignOut() {
+    // Navbar renders desktop and mobile actions; both share this request lock.
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setIsSigningOut(true);
+    setSignOutError(false);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setSignOutError(true);
+        return;
+      }
+      // AuthProvider receives SIGNED_OUT; the existing boundary guards history entries.
+      navigate("/login", { replace: true });
+    } catch {
+      setSignOutError(true);
+    } finally {
+      pendingRef.current = false;
+      setIsSigningOut(false);
+    }
+  }
+
   return (
     <header>
       <Navbar
@@ -11,28 +44,43 @@ export function CmsNavigation({ section }: { section?: string }) {
         showLanguage={false}
         showTheme={false}
         brand={
-          <div className="cms-brand">
+          <div className="cms-brand" role="img" aria-label="XPTO Assessoria Esportiva">
             <img
+              alt=""
               src={theme === "dark" ? "/logo-xpto.svg" : "/logo-xpto_black.svg"}
             />
-            <span>XPTO ASSESSORIA ESPORTIVA</span>
+            <span className="cms-brand-name">
+              <span>XPTO</span>
+              <span className="cms-brand-description">ASSESSORIA ESPORTIVA</span>
+            </span>
           </div>
         }
         actions={
           <div className="cms-nav-actions">
             <IconButton
+              className="cms-theme-toggle"
               variant="tertiary"
               size="small"
               icon={theme === "light" ? Moon : Sun}
               aria-label={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}
               onClick={toggleTheme}
             />
-            <div className="cms-admin">
-              <span>Admin</span>
+            <div className="cms-admin" title={email} aria-label={`Conta autenticada: ${email}`}>
               <span className="cms-avatar" aria-hidden="true">
-                A
+                {initial}
               </span>
+              <span className="cms-admin-email">{email}</span>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              leadingIcon={<LogOut size={16} aria-hidden="true" />}
+              disabled={isSigningOut}
+              aria-busy={isSigningOut}
+              onClick={() => void handleSignOut()}
+            >
+              {isSigningOut ? "Saindo…" : "Sair"}
+            </Button>
           </div>
         }
         items={[
@@ -42,8 +90,19 @@ export function CmsNavigation({ section }: { section?: string }) {
             href: "/partners",
             current: section === "partners",
           },
+          { label: "Usuários", href: "", disabled: true },
         ]}
       />
+      {signOutError && <div className="cms-signout-feedback">
+        <Toast
+          variant="error"
+          role="alert"
+          title="Não foi possível sair"
+          description="Tente novamente."
+          closeLabel="Fechar aviso"
+          onDismiss={() => setSignOutError(false)}
+        />
+      </div>}
     </header>
   );
 }
