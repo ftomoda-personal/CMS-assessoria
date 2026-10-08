@@ -1,41 +1,15 @@
-import { useRef, useState } from "react";
 import { Button, IconButton, Navbar, Toast } from "@ftomoda/spectra-design-system";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { useTheme } from "../useTheme";
 import { useAuth } from "../useAuth";
-import { navigate } from "../routes";
-import { supabase } from "../../lib/supabase/client";
+import { useLogout } from "../useLogout";
 
 export function CmsNavigation({ section }: { section?: string }) {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
   const email = user?.email ?? "Conta autenticada";
   const initial = Array.from(user?.email?.trim() ?? "")[0]?.toLocaleUpperCase("pt-BR") ?? "?";
-  const pendingRef = useRef(false);
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState(false);
-
-  async function handleSignOut() {
-    // Navbar renders desktop and mobile actions; both share this request lock.
-    if (pendingRef.current) return;
-    pendingRef.current = true;
-    setIsSigningOut(true);
-    setSignOutError(false);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        setSignOutError(true);
-        return;
-      }
-      // AuthProvider receives SIGNED_OUT; the existing boundary guards history entries.
-      navigate("/login", { replace: true });
-    } catch {
-      setSignOutError(true);
-    } finally {
-      pendingRef.current = false;
-      setIsSigningOut(false);
-    }
-  }
+  const { isSigningOut, signOutError, handleSignOut, dismissSignOutError } = useLogout();
 
   return (
     <header>
@@ -100,7 +74,7 @@ export function CmsNavigation({ section }: { section?: string }) {
           title="Não foi possível sair"
           description="Tente novamente."
           closeLabel="Fechar aviso"
-          onDismiss={() => setSignOutError(false)}
+          onDismiss={dismissSignOutError}
         />
       </div>}
     </header>
