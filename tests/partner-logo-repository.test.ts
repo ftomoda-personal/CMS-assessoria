@@ -1,3 +1,4 @@
+import type { ReadClient } from "../src/lib/supabase/readDataset.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createClient } from "@supabase/supabase-js";
@@ -33,7 +34,7 @@ function fixture(options: { member?: boolean; noSession?: boolean; status?: numb
       return new Response(JSON.stringify(options.status ? { statusCode: String(options.status), message: "private token" } : options.malformed ? { Id: id, Key: "wrong" } : { Id: id, Key: url.pathname.slice("/storage/v1/object/".length) }), { status: options.status ?? 200, headers: { "content-type": "application/json" } });
     } },
   });
-  const client: LogoClient = { from: sdk.from.bind(sdk), storage: sdk.storage, auth: { getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as LogoClient["auth"]["getSession"] } };
+  const client: LogoClient = { from: sdk.from.bind(sdk), storage: sdk.storage, auth: { getClaims: (async (jwt: string) => ({ data: { claims: { sub: id, session_id: jwt.includes("replacement") || jwt.includes("changed") || jwt === "new-token" ? "eeeeeeee-0000-0000-0000-000000000001" : "ffffffff-0000-0000-0000-000000000001" } }, error: null })) as NonNullable<ReadClient["auth"]["getClaims"]>, getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as LogoClient["auth"]["getSession"] } };
   const repo = createPartnerLogoRepository(client, { randomUUID: () => `AAAAAAAA-0000-0000-0000-${String(seq++).padStart(12, "0")}` });
   return { repo, requests, uploads: () => requests.filter(r => r.method === "POST"), ...controls };
 }

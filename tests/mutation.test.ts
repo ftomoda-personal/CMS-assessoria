@@ -28,7 +28,7 @@ function fixture() {
       });
     } },
   });
-  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getSession: (async () => ({ data: { session: loggedIn ? { user: { id: userId }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
+  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getClaims: (async (jwt: string) => ({ data: { claims: { sub: userId, session_id: jwt.includes("replacement") || jwt.includes("changed") || jwt === "new-token" ? "eeeeeeee-0000-0000-0000-000000000001" : "ffffffff-0000-0000-0000-000000000001" } }, error: null })) as NonNullable<ReadClient["auth"]["getClaims"]>, getSession: (async () => ({ data: { session: loggedIn ? { user: { id: userId }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
   return { client, reads: () => reads, replace: () => { token = "replacement-token"; }, switchUser: () => { userId = "BBBBBBBB-0000-0000-0000-000000000002"; }, logout: () => { loggedIn = false; }, revoke: () => { member = false; }, reject: () => { code = "42501"; }, during: (callback: () => void) => { duringRead = callback; } };
 }
 

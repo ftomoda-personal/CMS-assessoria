@@ -43,7 +43,7 @@ function fixture(options: { initial?: LogoMetadataReference; zero?: boolean; mis
       stored = { ...stored, ...body }; return respond([{ id }]);
     } },
   });
-  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getSession: (async () => ({ data: { session: loggedIn ? { user: { id: options.wrongUser ? "dddddddd-0000-0000-0000-000000000004" : id }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
+  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getClaims: (async (jwt: string) => ({ data: { claims: { sub: options.wrongUser ? "dddddddd-0000-0000-0000-000000000004" : id, session_id: jwt.includes("replacement") || jwt.includes("changed") || jwt === "new-token" ? "eeeeeeee-0000-0000-0000-000000000001" : "ffffffff-0000-0000-0000-000000000001" } }, error: null })) as NonNullable<ReadClient["auth"]["getClaims"]>, getSession: (async () => ({ data: { session: loggedIn ? { user: { id: options.wrongUser ? "dddddddd-0000-0000-0000-000000000004" : id }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
   return { repo: createPartnersWriteRepository(client), requests, writes: () => requests.filter(r => r.method !== "GET"), stored: () => stored };
 }
 const fails = (kind: string) => (error: unknown) => error instanceof MutationError && error.kind === kind;

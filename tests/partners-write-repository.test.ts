@@ -37,7 +37,7 @@ function fixture(options: {
       return new Response(JSON.stringify(options.refresh === "authorization" ? { code: "42501", message: token } : options.refresh === "missing" ? null : options.refresh === "invalid" ? { id } : { ...row, logo_path: options.logo ? "logos/brand.png" : null, logo_name: options.logo ? "Original.png" : null }), { status: options.refresh === "authorization" ? 403 : 200, headers: { "content-type": "application/json" } });
     } },
   });
-  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
+  const client: ReadClient = { from: sdk.from.bind(sdk), auth: { getClaims: (async (jwt: string) => ({ data: { claims: { sub: id, session_id: jwt.includes("replacement") || jwt.includes("changed") || jwt === "new-token" ? "eeeeeeee-0000-0000-0000-000000000001" : "ffffffff-0000-0000-0000-000000000001" } }, error: null })) as NonNullable<ReadClient["auth"]["getClaims"]>, getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as ReadClient["auth"]["getSession"] } };
   return { repo: createPartnersWriteRepository(client), requests, writes: () => requests.filter(r => r.method !== "GET"), ...controls };
 }
 

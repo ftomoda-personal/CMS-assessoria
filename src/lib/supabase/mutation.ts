@@ -1,6 +1,65 @@
 import type { ReadClient } from "./readDataset";
 
-export interface MutationOptions { readonly signal?: AbortSignal }
+declare const sessionGuardBrand: unique symbol;
+/** Opaque, process-local capability; JSON serialization is explicitly prohibited. */
+export interface SessionContinuityGuard { readonly [sessionGuardBrand]: true }
+export interface MutationOptions { readonly signal?: AbortSignal; readonly sessionGuard?: SessionContinuityGuard }
+type SessionIdentity = { userId: string; sessionId: string };
+const sessionGuards = new WeakMap<SessionContinuityGuard, { auth: ReadClient["auth"]; identity: SessionIdentity; invalidated: boolean }>();
+// Verified-token cache is private and bounded to one token per auth client.
+const verifiedTokens = new WeakMap<ReadClient["auth"], { token: string; identity: SessionIdentity }>();
+async function observeIdentity(client: ReadClient, signal?: AbortSignal): Promise<SessionIdentity> {
+  const checkAbort = () => { if (signal?.aborted) throw new MutationError("cancelled"); };
+  checkAbort();
+  try {
+    const observed = await client.auth.getSession();
+    checkAbort();
+    const session = observed.data.session;
+    if (observed.error || !session) throw new MutationError("authorization");
+    const token = session.access_token;
+    let identity = verifiedTokens.get(client.auth)?.token === token ? verifiedTokens.get(client.auth)!.identity : undefined;
+    if (!identity) {
+      if (!client.auth.getClaims) throw new MutationError("stale");
+      const verified = await client.auth.getClaims(token);
+      checkAbort();
+      const claims = verified.data?.claims;
+      if (verified.error || !claims || claims.sub !== session.user.id) throw new MutationError("stale");
+      try { identity = { userId: parsePersistedUuid(claims.sub), sessionId: parsePersistedUuid(claims.session_id) }; }
+      catch { throw new MutationError("stale"); }
+    }
+    // Never apply asynchronous verification to a newer session/token. No automatic retry.
+    const latest = await client.auth.getSession();
+    checkAbort();
+    if (latest.error || !latest.data.session || latest.data.session.access_token !== token || latest.data.session.user.id !== identity.userId) throw new MutationError("stale");
+    verifiedTokens.set(client.auth, { token, identity });
+    return identity;
+  } catch (error) {
+    checkAbort();
+    throw error instanceof MutationError ? error : new MutationError("stale");
+  }
+}
+const equalIdentity = (a: SessionIdentity, b: SessionIdentity) => a.userId === b.userId && a.sessionId === b.sessionId;
+
+/** Verified JWT session identity survives token rotation; credentials remain private. */
+export async function createSessionContinuityGuard(client: ReadClient, options: Pick<MutationOptions, "signal"> = {}): Promise<SessionContinuityGuard> {
+  const identity = await observeIdentity(client, options.signal);
+  const guard = Object.freeze(Object.defineProperty({}, "toJSON", { value: () => { throw new MutationError("response"); } })) as SessionContinuityGuard;
+  sessionGuards.set(guard, { auth: client.auth, identity, invalidated: false });
+  return guard;
+}
+
+export async function assertSessionContinuity(guard: SessionContinuityGuard, client: ReadClient, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new MutationError("cancelled");
+  const state = sessionGuards.get(guard);
+  if (!state || state.invalidated || state.auth !== client.auth) throw new MutationError("stale");
+  try {
+    const identity = await observeIdentity(client, signal);
+    if (state.invalidated || !equalIdentity(identity, state.identity)) throw new MutationError("stale");
+  } catch (error) {
+    if (!(error instanceof MutationError && error.kind === "cancelled")) state.invalidated = true;
+    throw error instanceof MutationError && error.kind === "cancelled" ? error : new MutationError("stale");
+  }
+}
 declare const persistedUuid: unique symbol;
 /** Validated transport identifier; validation never changes its representation. */
 export type PersistedUuid = string & { readonly [persistedUuid]: true };
@@ -69,6 +128,8 @@ export function classifyMutationRejection(code?: string, httpStatus?: number): M
 export interface MutationLifecycle {
   /** Await immediately before dispatch. Checks session and current admin membership. */
   prepareDispatch(): Promise<void>;
+  /** Final continuity/cancellation check after ALL asynchronous preflight steps. */
+  verifyBeforeDispatch(): Promise<void>;
   /** Call synchronously immediately before starting the request, after prepareDispatch. */
   markDispatched(): void;
   /** Transport loss/abort after dispatch means uncertainty, not rollback. */
@@ -81,24 +142,22 @@ export interface MutationLifecycle {
  * Session credentials stay inside closures and are never included in results/errors.
  */
 export async function createMutationLifecycle(client: ReadClient, options: MutationOptions = {}): Promise<MutationLifecycle> {
-  const { signal } = options;
+  const { signal, sessionGuard } = options;
   if (signal?.aborted) throw new MutationError("cancelled");
-  const getSession = async () => {
-    try {
-      const response = await client.auth.getSession();
-      return response.error ? null : response.data.session;
-    } catch { return null; }
-  };
-  const initial = await getSession();
-  if (signal?.aborted) throw new MutationError("cancelled");
-  if (!initial) throw new MutationError("authorization");
-  const userId = initial.user.id;
-  const token = initial.access_token;
+  const initial = await observeIdentity(client, signal);
+  if (sessionGuard) await assertSessionContinuity(sessionGuard, client, signal);
+  const userId = initial.userId;
   let prepared = false;
   let dispatched = false;
+  let invalidated = false;
   const sameSession = async () => {
-    const current = await getSession();
-    return Boolean(current && current.user.id === userId && current.access_token === token);
+    if (invalidated) return false;
+    try {
+      if (sessionGuard) await assertSessionContinuity(sessionGuard, client, signal);
+      const current = await observeIdentity(client, signal);
+      if (!equalIdentity(current, initial)) { invalidated = true; return false; }
+      return true;
+    } catch { if (!signal?.aborted) invalidated = true; return false; }
   };
   const authorized = async () => {
     let query = client.from("cms_admins").select("user_id").eq("user_id", userId);
@@ -117,16 +176,16 @@ export async function createMutationLifecycle(client: ReadClient, options: Mutat
       if (dispatched) throw new MutationError("response");
       prepared = false;
       if (signal?.aborted) throw new MutationError("cancelled");
-      if (!await sameSession()) throw new MutationError("stale");
+      if (!await sameSession()) throw new MutationError(signal?.aborted ? "cancelled" : "stale");
       let admin: boolean;
       try { admin = await authorized(); }
       catch (error) {
         if (signal?.aborted) throw new MutationError("cancelled");
-        if (!await sameSession()) throw new MutationError("stale");
+        if (!await sameSession()) throw new MutationError(signal?.aborted ? "cancelled" : "stale");
         throw error;
       }
       if (signal?.aborted) throw new MutationError("cancelled");
-      if (!await sameSession()) throw new MutationError("stale");
+      if (!await sameSession()) throw new MutationError(signal?.aborted ? "cancelled" : "stale");
       if (signal?.aborted) throw new MutationError("cancelled");
       if (!admin) throw new MutationError("authorization");
       prepared = true;
@@ -136,6 +195,13 @@ export async function createMutationLifecycle(client: ReadClient, options: Mutat
       if (signal?.aborted) throw new MutationError("cancelled");
       dispatched = true;
       prepared = false;
+    },
+    async verifyBeforeDispatch() {
+      if (dispatched || !prepared) throw new MutationError("response");
+      if (signal?.aborted) throw new MutationError("cancelled");
+      const valid = await sameSession();
+      if (signal?.aborted) throw new MutationError("cancelled");
+      if (!valid) { prepared = false; throw new MutationError("stale"); }
     },
     interruption() { return new MutationError(dispatched ? "uncertain" : signal?.aborted ? "cancelled" : "response"); },
     async canApplyResult() {

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Injection is for isolated tests; production resolves the existing shared client. */
 export type ReadClient = Pick<SupabaseClient, "from"> & {
-  readonly auth: Pick<SupabaseClient["auth"], "getSession">;
+  readonly auth: Pick<SupabaseClient["auth"], "getSession"> & Partial<Pick<SupabaseClient["auth"], "getClaims">>;
 };
 export interface ReadOptions { readonly signal?: AbortSignal }
 export type ReadErrorKind = "authorization" | "query" | "mapping" | "incomplete" | "cancelled" | "stale" | "response";

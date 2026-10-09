@@ -1,3 +1,4 @@
+import type { ReadClient } from "../src/lib/supabase/readDataset.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createClient } from "@supabase/supabase-js";
@@ -40,7 +41,7 @@ function fixture(options: {
       return new Response(JSON.stringify(options.refresh === "missing" ? null : { ...row, effective_status: "effective" in options ? options.effective : "draft" }), { headers: { "content-type": "application/json" } });
     } },
   });
-  const client: OffersWriteClient = { from: sdk.from.bind(sdk), rpc: sdk.rpc.bind(sdk), auth: { getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as OffersWriteClient["auth"]["getSession"] } };
+  const client: OffersWriteClient = { from: sdk.from.bind(sdk), rpc: sdk.rpc.bind(sdk), auth: { getClaims: (async (jwt: string) => ({ data: { claims: { sub: id, session_id: jwt.includes("replacement") || jwt.includes("changed") || jwt === "new-token" ? "eeeeeeee-0000-0000-0000-000000000001" : "ffffffff-0000-0000-0000-000000000001" } }, error: null })) as NonNullable<ReadClient["auth"]["getClaims"]>, getSession: (async () => ({ data: { session: loggedIn ? { user: { id }, access_token: token } : null }, error: null })) as OffersWriteClient["auth"]["getSession"] } };
   return { repo: createOffersWriteRepository(client), requests, writes: () => requests.filter(r => r.method === "POST"), ...controls };
 }
 function snapshot(result: OfferWriteResult) {

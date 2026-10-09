@@ -1,5 +1,7 @@
 import type { PartnerRow } from "../../lib/supabase/database.types";
-import { MutationError, parsePersistedUuid } from "../../lib/supabase/mutation.ts";
+import { assertSessionContinuity, MutationError, parsePersistedUuid } from "../../lib/supabase/mutation.ts";
+import type { SessionContinuityGuard } from "../../lib/supabase/mutation";
+import type { ReadClient } from "../../lib/supabase/readDataset";
 import type { ConfirmedPersistence, MutationOptions, PersistedUuid, UncertainMutation } from "../../lib/supabase/mutation";
 import type { PersistedPartner } from "./mappers";
 import type { PartnerEditableContent } from "./supabaseWriteRepository";
@@ -36,6 +38,19 @@ export interface PreparedLogoUpload {
   readonly kind: "prepared-upload";
   readonly context: LogoOperationContext;
   readonly metadata: LogoUploadMetadata;
+}
+// Association deliberately stays outside serializable prepared metadata/descriptors.
+const preparedSessionGuards = new WeakMap<PreparedLogoUpload, SessionContinuityGuard>();
+
+/** Same object instance only. Reload/JSON round-trip requires a separate reconciliation
+ * and authorization policy; an administrator UUID or descriptor is never sufficient.
+ */
+export async function assertPreparedLogoSession(prepared: PreparedLogoUpload, guard: SessionContinuityGuard | undefined, client: ReadClient, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new MutationError("cancelled");
+  const bound = preparedSessionGuards.get(prepared);
+  if (!bound && !guard) return; // Backward-compatible unguarded callers only.
+  if (!guard || bound !== guard) throw new MutationError("stale");
+  await assertSessionContinuity(guard, client, signal);
 }
 export type PartnerLogoCommand =
   | { readonly kind: "create"; readonly context: LogoOperationContext & { readonly target: { readonly kind: "create" } }; readonly content: PartnerEditableContent; readonly logo: CreateLogoIntent }
@@ -94,10 +109,12 @@ function copyMetadata(metadata: LogoUploadMetadata): LogoUploadMetadata {
 }
 
 /** Pure constructor, no upload or DB action. Only accepts an applicable confirmation. */
-export function prepareLogoUpload(context: LogoOperationContext, upload: Extract<LogoUploadResult, { outcome: "confirmed" }>): PreparedLogoUpload {
+export function prepareLogoUpload(context: LogoOperationContext, upload: Extract<LogoUploadResult, { outcome: "confirmed" }>, guard?: SessionContinuityGuard): PreparedLogoUpload {
   if (upload.outcome !== "confirmed") throw new MutationError("response");
   if (!upload.canApply) throw new MutationError("stale");
-  return { kind: "prepared-upload", context: copyContext(context), metadata: copyMetadata(upload) };
+  const prepared: PreparedLogoUpload = { kind: "prepared-upload", context: copyContext(context), metadata: copyMetadata(upload) };
+  if (guard) preparedSessionGuards.set(prepared, guard);
+  return prepared;
 }
 
 /** Copies only declared fields, dropping accidental runtime credentials/raw payloads. */

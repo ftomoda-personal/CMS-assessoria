@@ -50,6 +50,7 @@ export function createPartnerLogoRepository(client: LogoClient, dependencies: { 
       validatePath(metadata.objectPath);
       const storage = client.storage.from(bucket);
       await life.prepareDispatch();
+      await life.verifyBeforeDispatch();
       life.markDispatched();
       let response;
       // SDK upload has no AbortSignal parameter. After dispatch, abort cannot prove rollback.
