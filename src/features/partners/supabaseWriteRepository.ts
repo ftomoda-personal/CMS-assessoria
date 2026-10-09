@@ -5,6 +5,8 @@ import { classifyMutationRejection, createMutationLifecycle, MutationError, pars
 import type { ConfirmedDeletion, ConfirmedPersistence, FollowUp, MutationLifecycle, MutationOptions, PersistedUuid, UncertainMutation } from "../../lib/supabase/mutation";
 import { mapPartnerRow } from "./mappers.ts";
 import type { PersistedPartner } from "./mappers";
+import { createLogoReconciliationDescriptor } from "./logoIntegrationContracts.ts";
+import type { LogoMetadataReference, PreparedLogoUpload } from "./logoIntegrationContracts";
 
 export interface PartnerEditableContent { readonly name: string; readonly website: string }
 export type PartnerWriteResult = ConfirmedPersistence<PersistedPartner> | UncertainMutation;
@@ -15,6 +17,22 @@ function editable(content: PartnerEditableContent): PartnerEditableContent {
   if (typeof content.name !== "string" || typeof content.website !== "string" || !content.name.trim() || !content.website.trim()) throw new MutationError("domain");
   // Explicit whitelist: even extra runtime properties cannot reach the database.
   return { name: content.name, website: content.website };
+}
+
+function expectedMetadata(expected: LogoMetadataReference): LogoMetadataReference {
+  const { logo_path, logo_name } = expected;
+  if ((logo_path !== null && typeof logo_path !== "string") || (logo_name !== null && typeof logo_name !== "string") || (logo_path === null && logo_name !== null)) throw new MutationError("domain");
+  return { logo_path, logo_name };
+}
+function preparedMetadata(prepared: PreparedLogoUpload, target?: PersistedUuid, expected?: LogoMetadataReference): LogoMetadataReference {
+  if (prepared.kind !== "prepared-upload") throw new MutationError("response");
+  // Reuse the pure allowlist/path validation; acknowledgment is not proof of existence.
+  const descriptor = createLogoReconciliationDescriptor({ context: prepared.context, intent: "replace", uploaded: { state: "confirmed", metadata: prepared.metadata } });
+  const contextTarget = descriptor.context.target;
+  if (target ? contextTarget.kind !== "edit" || contextTarget.id.toLowerCase() !== target.toLowerCase()
+    || contextTarget.expectedLogo.logo_path !== expected?.logo_path || contextTarget.expectedLogo.logo_name !== expected?.logo_name
+    : contextTarget.kind !== "create") throw new MutationError("response");
+  return { logo_path: descriptor.uploaded!.metadata.objectPath, logo_name: descriptor.uploaded!.metadata.originalFilename };
 }
 
 /** Isolated writes only. No UI/cache integration, Storage calls or Offer derivation. */
@@ -36,14 +54,24 @@ export function createPartnersWriteRepository(client: ReadClient) {
     }
   }
 
-  async function mutate(operation: "create" | "update" | "delete", content: PartnerEditableContent | undefined, target: PersistedUuid | undefined, options: MutationOptions): Promise<PartnerWriteResult | PartnerDeleteResult> {
+  async function mutate(operation: "create" | "update" | "delete", content: PartnerEditableContent | LogoMetadataReference | (PartnerEditableContent & LogoMetadataReference) | undefined, target: PersistedUuid | undefined, options: MutationOptions, expected?: LogoMetadataReference, initiatingAdminId?: PersistedUuid): Promise<PartnerWriteResult | PartnerDeleteResult> {
     const life = await createMutationLifecycle(client, options);
-    const mutation = operation === "create" ? client.from("partners").insert(content!)
-      : operation === "update" ? client.from("partners").update(content!).eq("id", target!)
+    let mutation = operation === "create" ? client.from("partners").insert(content as Record<string, string | null>)
+      : operation === "update" ? client.from("partners").update(content as Record<string, string | null>).eq("id", target!)
       : client.from("partners").delete().eq("id", target!);
+    if (expected) {
+      mutation = expected.logo_path === null ? mutation.is("logo_path", null) : mutation.eq("logo_path", expected.logo_path);
+      mutation = expected.logo_name === null ? mutation.is("logo_name", null) : mutation.eq("logo_name", expected.logo_name);
+    }
     let query = mutation.select(operation === "delete" ? "id,logo_path" : "id").returns<Record<string, unknown>[]>().retry(false);
     if (options.signal) query = query.abortSignal(options.signal);
     await life.prepareDispatch();
+    if (initiatingAdminId) {
+      const current = await client.auth.getSession();
+      if (current.error || current.data.session?.user.id.toLowerCase() !== initiatingAdminId.toLowerCase()) throw new MutationError("stale");
+      // Recheck the lifecycle after the asynchronous originating-user verification.
+      await life.prepareDispatch();
+    }
     life.markDispatched();
     let response;
     try { response = await query; }
@@ -56,6 +84,16 @@ export function createPartnersWriteRepository(client: ReadClient) {
     if (response.status < 200 || response.status >= 300 || !Array.isArray(response.data)) return { outcome: "uncertain", id: target, error: new MutationError("response") };
     if (response.data.length === 0) {
       if (operation === "create") return { outcome: "uncertain", error: new MutationError("response") };
+      if (expected && target) {
+        const read = await refresh(target, life, options);
+        if (read.state === "failed") throw read.error;
+        if (read.state !== "completed") throw new MutationError("response");
+        const actualPath = read.value.logo?.objectPath ?? null;
+        const actualName = read.value.logo?.originalFilename ?? null;
+        if (actualPath !== expected.logo_path || actualName !== expected.logo_name) throw new MutationError("conflict");
+        // Matching current metadata is not evidence of a conflict or a successful write.
+        throw new MutationError("response");
+      }
       throw new MutationError("missing");
     }
     if (response.data.length !== 1) return { outcome: "uncertain", id: target, error: new MutationError("response") };
@@ -72,6 +110,17 @@ export function createPartnersWriteRepository(client: ReadClient) {
   }
 
   return {
+    createWithLogo(content: PartnerEditableContent, prepared: PreparedLogoUpload, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+      return mutate("create", { ...editable(content), ...preparedMetadata(prepared) }, undefined, options, undefined, prepared.context.initiatingAdminId) as Promise<PartnerWriteResult>;
+    },
+    setLogo(id: string, expected: LogoMetadataReference, prepared: PreparedLogoUpload, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+      const target = parsePersistedUuid(id);
+      const previous = expectedMetadata(expected);
+      return mutate("update", preparedMetadata(prepared, target, previous), target, options, previous, prepared.context.initiatingAdminId) as Promise<PartnerWriteResult>;
+    },
+    removeLogo(id: string, expected: LogoMetadataReference, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+      return mutate("update", { logo_path: null, logo_name: null }, parsePersistedUuid(id), options, expectedMetadata(expected)) as Promise<PartnerWriteResult>;
+    },
     create(content: PartnerEditableContent, options: MutationOptions = {}): Promise<PartnerWriteResult> {
       return mutate("create", editable(content), undefined, options) as Promise<PartnerWriteResult>;
     },
@@ -85,6 +134,18 @@ export function createPartnersWriteRepository(client: ReadClient) {
 }
 
 export const partnersWriteRepository = {
+  async createWithLogo(content: PartnerEditableContent, prepared: PreparedLogoUpload, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+    const { supabase } = await import("../../lib/supabase/client.ts");
+    return createPartnersWriteRepository(supabase).createWithLogo(content, prepared, options);
+  },
+  async setLogo(id: string, expected: LogoMetadataReference, prepared: PreparedLogoUpload, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+    const { supabase } = await import("../../lib/supabase/client.ts");
+    return createPartnersWriteRepository(supabase).setLogo(id, expected, prepared, options);
+  },
+  async removeLogo(id: string, expected: LogoMetadataReference, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+    const { supabase } = await import("../../lib/supabase/client.ts");
+    return createPartnersWriteRepository(supabase).removeLogo(id, expected, options);
+  },
   async create(content: PartnerEditableContent, options: MutationOptions = {}): Promise<PartnerWriteResult> {
     const { supabase } = await import("../../lib/supabase/client.ts");
     return createPartnersWriteRepository(supabase).create(content, options);
