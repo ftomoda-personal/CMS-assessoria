@@ -135,3 +135,12 @@ test("name/website-only update still omits logo metadata", async () => {
   const f = fixture({ initial: old }); await f.repo.update(id, { name: "Changed", website: "changed.example" });
   assert.deepEqual(f.writes()[0].body, { name: "Changed", website: "changed.example" }); assert.equal(f.stored().logo_path, old.logo_path);
 });
+
+for (const replacement of [true, false]) test(`content and logo ${replacement ? "replacement" : "removal"} share one conditional write`, async () => {
+  const f = fixture({ initial: old });
+  const result = await f.repo.updateWithLogo(id, { name: "Updated", website: "updated.example" }, old, replacement ? prepared(old) : null);
+  assert.equal(result.outcome, "confirmed"); assert.equal(f.writes().length, 1);
+  assert.deepEqual(f.writes()[0].body, { name: "Updated", website: "updated.example", logo_path: replacement ? path : null, logo_name: replacement ? "Original.jpeg" : null });
+  assert.equal(f.writes()[0].url.searchParams.get("logo_path"), `eq.${old.logo_path}`);
+  assert.equal(f.writes()[0].url.searchParams.get("logo_name"), `eq.${old.logo_name}`);
+});

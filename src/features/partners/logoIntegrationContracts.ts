@@ -75,7 +75,9 @@ interface IntegrationOutcomeContext {
 }
 export type PartnerLogoIntegrationOutcome = IntegrationOutcomeContext & (
   | { readonly kind: "confirmed"; readonly persistence: ConfirmedPersistence<PersistedPartner> }
-  | { readonly kind: "before-database-failure"; readonly error: MutationError }
+  | { readonly kind: "before-database-failure"; readonly error: MutationError; readonly prepared?: PreparedLogoUpload }
+  | { readonly kind: "database-rejected"; readonly error: MutationError; readonly prepared?: PreparedLogoUpload }
+  | { readonly kind: "zero-row"; readonly error: MutationError; readonly prepared?: PreparedLogoUpload }
   | { readonly kind: "upload-confirmed-database-rejected"; readonly prepared: PreparedLogoUpload; readonly error: MutationError }
   | { readonly kind: "upload-uncertain"; readonly upload: Extract<LogoUploadResult, { outcome: "uncertain" }> }
   | { readonly kind: "database-uncertain"; readonly mutation: UncertainMutation; readonly prepared?: PreparedLogoUpload }

@@ -11,6 +11,18 @@ import type { LogoMetadataReference, PreparedLogoUpload } from "./logoIntegratio
 export interface PartnerEditableContent { readonly name: string; readonly website: string }
 export type PartnerWriteResult = ConfirmedPersistence<PersistedPartner> | UncertainMutation;
 export type PartnerDeleteResult = ConfirmedDeletion | UncertainMutation;
+/** Process-local repository evidence. Plain/serialized errors prove nothing. */
+export type PartnerWriteFailureEvidence =
+  | { readonly state: "database-rejected"; readonly retryEligible: boolean }
+  | { readonly state: "zero-row" | "logo-conflict" };
+const failureEvidence = new WeakMap<MutationError, PartnerWriteFailureEvidence>();
+export function getPartnerWriteFailureEvidence(error: MutationError): PartnerWriteFailureEvidence | undefined {
+  return failureEvidence.get(error);
+}
+function evidenced(error: MutationError, evidence: PartnerWriteFailureEvidence): MutationError {
+  failureEvidence.set(error, Object.freeze(evidence));
+  return error;
+}
 const columns = "id,name,website,logo_path,logo_name,ever_associated";
 
 function editable(content: PartnerEditableContent): PartnerEditableContent {
@@ -80,23 +92,27 @@ export function createPartnersWriteRepository(client: ReadClient) {
     catch { return { outcome: "uncertain", id: target, error: life.interruption() }; }
     if (response.error) {
       // SDK transport failures have status 0. Gateway/server failures may hide a commit.
-      if (response.status === 0 || response.status >= 500) return { outcome: "uncertain", id: target, error: life.interruption() };
-      throw classifyMutationRejection(response.error.code, response.status);
+      if (!Number.isInteger(response.status) || response.status < 400 || response.status >= 500) return { outcome: "uncertain", id: target, error: life.interruption() };
+      const error = classifyMutationRejection(response.error.code, response.status);
+      // Narrow allowlist: correctable content constraints only. Auth, unknown errors,
+      // general conflicts and preflight failures never issue retry authorization.
+      const retryEligible = error.kind === "domain" && ["23514", "23502", "23503"].includes(error.code ?? "");
+      throw evidenced(error, { state: "database-rejected", retryEligible });
     }
     if (response.status < 200 || response.status >= 300 || !Array.isArray(response.data)) return { outcome: "uncertain", id: target, error: new MutationError("response") };
     if (response.data.length === 0) {
       if (operation === "create") return { outcome: "uncertain", error: new MutationError("response") };
       if (expected && target) {
         const read = await refresh(target, life, options);
-        if (read.state === "failed") throw read.error;
-        if (read.state !== "completed") throw new MutationError("response");
+        if (read.state === "failed") throw evidenced(read.error, { state: "zero-row" });
+        if (read.state !== "completed") throw evidenced(new MutationError("response"), { state: "zero-row" });
         const actualPath = read.value.logo?.objectPath ?? null;
         const actualName = read.value.logo?.originalFilename ?? null;
-        if (actualPath !== expected.logo_path || actualName !== expected.logo_name) throw new MutationError("conflict");
+        if (actualPath !== expected.logo_path || actualName !== expected.logo_name) throw evidenced(new MutationError("conflict"), { state: "logo-conflict" });
         // Matching current metadata is not evidence of a conflict or a successful write.
-        throw new MutationError("response");
+        throw evidenced(new MutationError("response"), { state: "zero-row" });
       }
-      throw new MutationError("missing");
+      throw evidenced(new MutationError("missing"), { state: "zero-row" });
     }
     if (response.data.length !== 1) return { outcome: "uncertain", id: target, error: new MutationError("response") };
     let id: PersistedUuid;
@@ -112,6 +128,12 @@ export function createPartnersWriteRepository(client: ReadClient) {
   }
 
   return {
+    updateWithLogo(id: string, content: PartnerEditableContent, expected: LogoMetadataReference, prepared: PreparedLogoUpload | null, options: MutationOptions = {}): Promise<PartnerWriteResult> {
+      const target = parsePersistedUuid(id);
+      const previous = expectedMetadata(expected);
+      const metadata = prepared ? preparedMetadata(prepared, target, previous) : { logo_path: null, logo_name: null };
+      return mutate("update", { ...editable(content), ...metadata }, target, options, previous, prepared?.context.initiatingAdminId, prepared ?? undefined) as Promise<PartnerWriteResult>;
+    },
     createWithLogo(content: PartnerEditableContent, prepared: PreparedLogoUpload, options: MutationOptions = {}): Promise<PartnerWriteResult> {
       return mutate("create", { ...editable(content), ...preparedMetadata(prepared) }, undefined, options, undefined, prepared.context.initiatingAdminId, prepared) as Promise<PartnerWriteResult>;
     },
