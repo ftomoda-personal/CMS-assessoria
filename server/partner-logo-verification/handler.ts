@@ -1,3 +1,4 @@
+import { isVerificationJsonContentType } from "./contentType.ts";
 import { objectRecord, parseRemoteVerification, validVerificationRequest, verificationResult } from "../../src/features/partners/logoVerificationContracts.ts";
 import type { RemoteLogoObservation } from "../../src/features/partners/logoVerificationContracts";
 export interface VerifiedIdentity { readonly userId: string; readonly sessionId: string; readonly expiresAt: number }
@@ -22,7 +23,7 @@ export function createLogoVerificationHandler(deps: VerificationHandlerDependenc
     let release: (() => Promise<void>) | undefined;
     try {
       const text = await request.text();
-      if (request.method !== "POST" || text.length > 1024 || request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") outcome = { kind: "invalid-request" };
+      if (request.method !== "POST" || text.length > 1024 || !isVerificationJsonContentType(request.headers.get("content-type"))) outcome = { kind: "invalid-request" };
       else {
         let input: unknown; try { input = JSON.parse(text); } catch { input = undefined; }
         if (!validVerificationRequest(input)) outcome = { kind: "invalid-request" };

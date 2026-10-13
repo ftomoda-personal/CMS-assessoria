@@ -138,3 +138,9 @@ test("incompatible caller guard prevents transport request", async () => {
   const a = browser(); const b = browser(); const guard = await createSessionContinuityGuard(a.client);
   const result = await b.service.verify(input, { sessionGuard: guard }); invariant(result); assert.equal(result.kind, "session-interrupted"); assert.equal(b.calls(), 0);
 });
+
+for (const [contentType, accepted] of [["application/json", true], ["Application/JSON", true], ["Application/JSON; charset=utf-8", true], ['APPLICATION/JSON; Charset="UTF-8"', true], ["text/plain", false], ["application/json, text/plain", false], ["application/json;", false], ["application/json; charset=utf-8; charset=utf-8", false]] as const) test(`handler Content-Type ${contentType}`, async () => {
+  let calls = 0; const handler = createLogoVerificationHandler({ now: () => 1000000, authenticate: async () => { calls++; return { kind: "verified", identity }; }, membership: async () => "admin", acquire: async () => ({ kind: "allowed", release: async () => {} }), inspect: async () => observed });
+  const response = await handler(new Request("https://test.invalid", { method: "POST", headers: { "content-type": contentType, authorization: "Bearer fake" }, body: JSON.stringify(input) }));
+  assert.equal(response.status, accepted ? 200 : 400); assert.equal(response.headers.get("cache-control"), "no-store"); const result = await response.json(); invariant(result); assert.equal(result.kind, accepted ? "object-observed" : "invalid-request"); assert.equal(calls, accepted ? 2 : 0);
+});
