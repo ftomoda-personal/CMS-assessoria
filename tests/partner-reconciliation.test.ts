@@ -120,3 +120,19 @@ test("DI boundary exposes only reconcile; rejected dependency promise fails cons
   assert.deepEqual(Object.keys(service), ["reconcile"]); const result = await service.reconcile(history());
   assert.deepEqual(result.observation, { kind: "failure", reason: "service" }); assert.equal(result.retryAuthorization, "none");
 });
+
+test("structurally valid fabricated and serialized descriptors remain caller history without authorization", async () => {
+  const f = fixture(); f.data({ ...row, logo_path: path, logo_name: "New" });
+  for (const historical of [history(), JSON.parse(JSON.stringify(history()))]) {
+    const result = await createPartnerReconciliation(f.repo).reconcile(historical);
+    assert.equal(result.historical, historical); assert.equal(result.historical.kind, "database-uncertain");
+    assert.equal(result.observation.kind, "uploaded-reference-matches"); assert.equal(result.retryAuthorization, "none"); assert.ok(result.nextActions.includes("keep-writes-blocked"));
+  }
+  assert.ok(f.requests.every(r => r.method === "GET"));
+});
+test("reconciliation rejects caller guard belonging to another client", async () => {
+  const a = fixture(); const b = fixture(); const guard = await createSessionContinuityGuard(a.client);
+  const result = await createPartnerReconciliation(b.repo).reconcile(history(), { sessionGuard: guard });
+  assert.equal(result.observation.kind, "session-interrupted"); assert.equal("partner" in result.observation, false);
+  assert.equal(b.requests.length, 0); assert.equal(result.retryAuthorization, "none");
+});
