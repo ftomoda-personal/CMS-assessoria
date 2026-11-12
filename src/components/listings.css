@@ -1,0 +1,81 @@
+/* Listing-only layout: other CMS screens keep their existing spacing. */
+main:has(> .cms-list) {
+  --listing-inline: var(--spacing-12);
+  --listing-block: var(--spacing-8);
+  min-width: 0;
+  padding: var(--listing-block) var(--listing-inline);
+}
+.cms-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  min-height: calc(100svh - var(--spacing-16) - var(--stroke-default) - 2 * var(--listing-block));
+  overflow-wrap: anywhere;
+}
+.cms-list .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+.cms-list .page-header > div { min-width: 0; }
+.cms-list .page-header p {
+  padding-top: var(--spacing-1);
+  font-weight: var(--typography-label-lg-font-weight);
+}
+.cms-list-filters {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--spacing-2);
+  /* Leave space around controls so keyboard focus is never cropped. */
+  padding: var(--spacing-2) var(--stroke-focus);
+}
+.cms-list-filters:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 var(--stroke-focus) var(--color-interaction-focus);
+}
+.cms-list .spectra-table { table-layout: fixed; }
+.cms-list .spectra-input { width: 100%; }
+.cms-list .spectra-table__cell,
+.cms-list .spectra-table__header-cell { overflow-wrap: anywhere; }
+.cms-list .spectra-status-badge { max-width: 100%; }
+.cms-list > footer {
+  margin-top: auto;
+  margin-inline: calc(-1 * var(--listing-inline));
+  margin-bottom: calc(-1 * var(--listing-block));
+  padding: var(--spacing-4) var(--listing-inline);
+  border-top: var(--stroke-default) solid var(--color-foundation-border);
+}
+.cms-list > footer .spectra-pagination { flex-wrap: wrap; }
+.cms-list > footer .spectra-pagination__controls {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.cms-list > footer .spectra-pagination__summary { min-width: 0; }
+
+/* Reuse the Navbar's compact boundary; six desktop columns fit above it. */
+@media (max-width: 1063px) {
+  main:has(> .cms-list) { --listing-inline: var(--spacing-6); }
+}
+@media (max-width: 600px) {
+  main:has(> .cms-list) {
+    --listing-inline: var(--spacing-4);
+    --listing-block: var(--spacing-2);
+  }
+  .cms-list .page-header { flex-direction: column; gap: var(--spacing-2); }
+  .cms-list > footer .spectra-pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-4);
+  }
+  .cms-list > footer .spectra-pagination__controls {
+    width: 100%;
+    margin-inline-start: 0;
+    justify-content: space-between;
+    gap: var(--spacing-1);
+  }
+  .cms-list > footer .spectra-pagination__entry { gap: var(--spacing-1); }
+}

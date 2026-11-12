@@ -1,90 +1,73 @@
-import { useRef, useState, useSyncExternalStore } from "react";
-import type { FormEvent } from "react";
-import { Button, Dialog, Input, StatusBadge, Toast } from "@ftomoda/spectra-design-system";
-import { Save, TriangleAlert, X } from "lucide-react";
-import { PageHeader } from "../../../components/PageHeader";
+import { useEffect, useRef, useState } from "react";
+import { Button, Dialog, Input, StatusBadge } from "@ftomoda/spectra-design-system";
+import { Save, Trash2, X } from "lucide-react";
+import { mapPartnerList } from "../mappers";
+import type { PersistedPartner } from "../mappers";
+import { useCmsData } from "../../../app/useCmsData";
 import { navigate } from "../../../app/routes";
-import { offerRepository } from "../../offers/repository";
-import { partnerRepository } from "../repository";
-import type { Partner } from "../model";
-import { countPartnerOffers } from "../list";
-import { LogoDropzone } from "./LogoDropzone";
+import { PageHeader } from "../../../components/PageHeader";
+import { PartnerLogoPlaceholder } from "./PartnerLogoPlaceholder";
+import { PartnerMutationNotice } from "./PartnerMutationNotice";
 import "../create-partner.css";
 
 export type PartnerNotice = { partnerId: string; variant: "success"; title: string; description: string };
-export function PartnerForm({ partner, onSaved }: { partner?: Partner; onSaved: (notice: PartnerNotice) => void }) {
-  const editing = Boolean(partner);
+export function PartnerForm({ partner }: { partner?: PersistedPartner; onSaved: (notice: PartnerNotice) => void }) {
   const [name, setName] = useState(partner?.name ?? "");
   const [website, setWebsite] = useState(partner?.website ?? "");
-  const [logo, setLogo] = useState<File>();
-  const [uploading, setUploading] = useState(false);
-  const [operationError, setOperationError] = useState<"save" | "delete" | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const { offers } = useSyncExternalStore(offerRepository.subscribe, offerRepository.getSnapshot);
-  const offerCount = partner ? countPartnerOffers(offers).get(partner.id)?.total ?? 0 : 0;
-  const canDelete = partner ? partnerRepository.canDelete(partner.id) : false;
-  const complete = Boolean(name.trim() && website.trim() && !uploading);
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!complete) return;
-    let temporaryUrl: string | undefined;
-    let id: string;
-    try {
-      id = partner?.id ?? crypto.randomUUID();
-      temporaryUrl = logo ? URL.createObjectURL(logo) : undefined;
-      const next: Partner = {
-        ...partner, id, name: name.trim(), website: website.trim(),
-        logoUrl: temporaryUrl ?? partner?.logoUrl,
-        logoKind: temporaryUrl ? "session-object-url" : partner?.logoKind,
-        logoName: logo?.name ?? partner?.logoName,
-      };
-      if (partner) partnerRepository.update(next);
-      else partnerRepository.save(next);
-    } catch {
-      if (temporaryUrl) URL.revokeObjectURL(temporaryUrl);
-      setOperationError("save");
-      return;
-    }
-    // Current Figma's edit-result title says "adicionado"; preserve its copy.
-    onSaved({ partnerId: id, variant: "success", title: "Parceiro adicionado", description: `${name.trim()} foi ${editing ? "modificado" : "adicionado"} com sucesso.` });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [touched, setTouched] = useState({ name: false, website: false });
+  const { mutatePartner, partnerCreateBlocked, mutationState, status, refreshing, refreshFailed, offers } = useCmsData();
+  const disabled = (!partner && partnerCreateBlocked) || Boolean(refreshing || refreshFailed) || status !== "ready" || !["idle", "rejected", "confirmed"].includes(mutationState);
+  const canDelete = partner && !partner.everAssociated && !offers.some(offer => offer.partnerId === partner.id);
+  const details = partner ? mapPartnerList([partner], offers)[0] : undefined;
+  const deletionUnresolved = ["pending", "uncertain", "refresh-failed"].includes(mutationState);
+  const cancelDelete = useRef<HTMLButtonElement>(null);
+  const deletionFeedback = useRef<HTMLDivElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const websiteInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (confirmDelete && deletionUnresolved) deletionFeedback.current?.focus({ preventScroll: true });
+  }, [confirmDelete, deletionUnresolved]);
+
+  function changeDeleteOpen(open: boolean) {
+    if (!open && deletionUnresolved) return;
+    setConfirmDelete(open);
   }
-  function deletePartner() {
-    if (!partner) return;
-    try { partnerRepository.remove(partner.id); }
-    catch { setDialogOpen(false); setOperationError("delete"); return; }
-    setDialogOpen(false);
-    onSaved({ partnerId: partner.id, variant: "success", title: "Parceiro excluído", description: `${partner.name} foi excluído com sucesso.` });
-  }
-  return <div className="create-partner">
-    <PageHeader title={editing ? "EDITAR PARCEIRO" : "ADICIONAR PARCEIRO"} />
-    {operationError && <Toast className="creation-toast" variant="error" title={operationError === "delete" ? "Não foi possível excluir o parceiro" : editing ? "Não foi possível modificar o parceiro" : "Não foi possível adicionar o parceiro"} description="Por favor tente novamente mais tarde." aria-live="assertive" closeLabel="Fechar notificação" onDismiss={() => setOperationError(null)} />}
-    <form aria-label={editing ? "Editar parceiro" : "Criar parceiro"} onSubmit={submit}>
-      <div className={editing ? "edit-partner-columns" : undefined}>
-        <div className="create-partner-fields">
-          <Input className={editing ? "edit-partner-input" : undefined} size={editing ? "lg" : "md"} label="Nome" name="name" required placeholder="ex: Nubank" value={name} onChange={event => setName(event.target.value)} />
-          <Input className={editing ? "edit-partner-input" : undefined} size={editing ? "lg" : "md"} label="Link" name="website" required placeholder="ex: nubank.com.br" value={website} onChange={event => setWebsite(event.target.value)} />
-          <LogoDropzone existingLogo={partner?.logoUrl ? { url: partner.logoUrl, name: partner.logoName ?? partner.logoUrl.split('/').pop() ?? "Logo atual", partnerName: partner.name } : undefined} onChange={(file, busy) => { setLogo(file); setUploading(busy); }} />
+
+  return <section className={`partner-form partner-form--${partner ? "edit" : "create"}`}>
+    <PageHeader title={partner ? "EDITAR PARCEIRO" : "ADICIONAR PARCEIRO"} />
+    <form aria-label={partner ? "Editar parceiro" : "Adicionar parceiro"} aria-busy={mutationState === "pending"} onSubmit={event => {
+      event.preventDefault();
+      if (name.trim() && website.trim()) void mutatePartner(partner ? "update" : "create", partner?.id, { name: name.trim(), website: website.trim() });
+      else {
+        setTouched({ name: true, website: true });
+        (!name.trim() ? nameInput : websiteInput).current?.focus();
+      }
+    }}>
+      <div className="partner-form-grid">
+        {details && <section className="partner-form-panel" aria-label="Informações do parceiro">
+          <div className="partner-form-status"><span>Status:</span><StatusBadge variant={details.status === "active" ? "success" : "error"}>{details.status === "active" ? "Ativo" : "Inativo"}</StatusBadge></div>
+          <div className="partner-form-counts"><span>Ofertas:</span><dl><div><dt>Totais</dt><dd>{details.totalOffers}</dd></div><div><dt>Ativas</dt><dd>{details.activeOffers}</dd></div></dl></div>
+          <div className="partner-form-delete"><p id="partner-delete-rule">Parceiro só pode ser excluído se nunca foi associado a uma oferta.</p><Button type="button" variant="destructive" size="sm" aria-describedby="partner-delete-rule" disabled={disabled || !canDelete} onClick={() => setConfirmDelete(true)}>Excluir parceiro</Button></div>
+        </section>}
+        <div className="partner-form-fields">
+          <Input ref={nameInput} label="Nome" name="name" required value={name} placeholder="ex: Nubank" disabled={disabled} validationState={touched.name && !name.trim() ? "error" : "default"} errorMessage="Informe o nome do parceiro." onBlur={() => setTouched(current => ({ ...current, name: true }))} onChange={event => setName(event.target.value)} />
+          <Input ref={websiteInput} label="Link" name="website" required value={website} placeholder="ex: nubank.com.br" disabled={disabled} validationState={touched.website && !website.trim() ? "error" : "default"} errorMessage="Informe o site do parceiro." onBlur={() => setTouched(current => ({ ...current, website: true }))} onChange={event => setWebsite(event.target.value)} />
+          <PartnerLogoPlaceholder partner={partner} />
         </div>
-        {editing && <aside className="edit-partner-options" aria-label="Relacionamentos do parceiro">
-          <div className="edit-partner-panel">
-            <div className="edit-partner-row"><span>Status:</span><StatusBadge variant={offerCount > 0 ? "success" : "error"}>{offerCount > 0 ? "Ativo" : "Inativo"}</StatusBadge></div>
-            <div className="edit-partner-row"><span>Ofertas:</span><span>{offerCount}</span></div>
-            <div className="edit-partner-delete">
-              <p id="partner-delete-explanation">Parceiro só pode ser excluído se nunca foi associado a uma oferta.</p>
-              <Button type="button" variant="destructive" size="sm" disabled={!canDelete} aria-describedby="partner-delete-explanation" onClick={() => setDialogOpen(true)}>Excluir parceiro</Button>
-            </div>
-          </div>
-        </aside>}
       </div>
-      <div className="create-partner-actions">
-        <Button type="button" variant="tertiary" leadingIcon={<X size={16} aria-hidden="true" />} onClick={() => navigate("/partners")}>Cancelar</Button>
-        <Button type="submit" disabled={!complete} leadingIcon={<Save size={16} aria-hidden="true" />}>Salvar</Button>
+      <div className="partner-form-actions">
+        <Button type="button" variant="tertiary" leadingIcon={<X size={16} />} disabled={disabled} onClick={() => navigate("/partners")}>Cancelar</Button>
+        <Button type="submit" disabled={disabled || !name.trim() || !website.trim()} leadingIcon={<Save size={16} />}>Salvar</Button>
       </div>
     </form>
-    {editing && <Dialog open={dialogOpen} onOpenChange={setDialogOpen} role="alertdialog" title="Excluir parceiro?" description="Esta ação não poderá ser desfeita." leadingIcon={<TriangleAlert size={24} aria-hidden="true" />} closeLabel="Fechar diálogo" initialFocusRef={cancelDeleteRef} footer={<>
-      <Button ref={cancelDeleteRef} type="button" variant="tertiary" size="sm" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-      <Button type="button" variant="destructive" size="sm" onClick={deletePartner}>Excluir parceiro</Button>
-    </>} />}
-  </div>;
+    <Dialog open={confirmDelete} onOpenChange={changeDeleteOpen} title="Excluir parceiro?" description={`Excluir permanentemente o parceiro “${partner?.name ?? ""}”? Esta ação não pode ser desfeita.`} role="alertdialog" closeLabel="Fechar confirmação de exclusão" initialFocusRef={cancelDelete} leadingIcon={<Trash2 size={24} />} className={`partner-delete-dialog${deletionUnresolved ? " partner-delete-dialog--locked" : ""}`} footer={<>
+      <Button ref={cancelDelete} variant="tertiary" disabled={deletionUnresolved} onClick={() => changeDeleteOpen(false)}>Cancelar</Button>
+      <Button variant="destructive" disabled={disabled || !canDelete} onClick={() => { void mutatePartner("delete", partner?.id); }}>Confirmar exclusão</Button>
+    </>}>
+      <p>A exclusão é permitida somente sem histórico de associação a ofertas.</p>
+      {confirmDelete && <div ref={deletionFeedback} tabIndex={-1} className="partner-delete-feedback" aria-label="Resultado da exclusão"><PartnerMutationNotice /></div>}
+    </Dialog>
+  </section>;
 }

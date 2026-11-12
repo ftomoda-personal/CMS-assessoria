@@ -31,3 +31,50 @@
 @media (max-width: 900px) { .edit-partner-columns { flex-direction: column; gap: var(--spacing-8); } .edit-partner-options { width: 100%; } }
 
 .edit-partner-input { width: 100%; }
+
+/* Active Partner forms only. LogoDropzone remains disconnected from the MVP. */
+main:has(> .partner-form) { padding: var(--spacing-8) var(--spacing-12); }
+.partner-form { min-width: 0; overflow-wrap: anywhere; }
+.partner-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--spacing-16); align-items: start; }
+.partner-form-fields { grid-column: 1; grid-row: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--spacing-8); }
+.partner-form-panel { grid-column: 2; grid-row: 1; min-width: 0; margin-top: var(--spacing-6); padding: var(--spacing-6) var(--spacing-4); border: var(--stroke-default) solid var(--color-foundation-border); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--spacing-8); }
+.partner-form-status, .partner-form-counts { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacing-6); font-weight: var(--typography-label-lg-font-weight); }
+.partner-form-counts dl { display: flex; flex-wrap: wrap; gap: var(--spacing-6); margin: 0; font-size: var(--typography-label-md-font-size); }
+.partner-form-counts dl > div { display: flex; align-items: center; gap: var(--spacing-1); }
+.partner-form-counts dd { margin: 0; padding-inline: var(--spacing-1); border-radius: var(--radius-full); background: var(--color-foundation-surface-strong); color: var(--color-content-foreground-muted); font-size: var(--typography-caption-font-size); font-weight: 400; }
+.partner-form-delete { display: flex; flex-direction: column; align-items: flex-start; gap: var(--spacing-2); }
+.partner-form-delete p { margin: 0; color: var(--color-content-foreground-muted); font-size: var(--typography-body-sm-font-size); }
+.partner-form .spectra-input { width: 100%; min-width: 0; }
+.partner-form .spectra-input__control { min-width: 0; }
+.partner-logo-placeholder { min-width: 0; }
+.partner-logo-placeholder h2 { margin: 0 0 var(--spacing-1); font-family: var(--font-family-body); font-size: var(--typography-label-md-font-size); font-weight: var(--typography-label-md-font-weight); line-height: var(--typography-label-md-line-height); }
+.partner-logo-placeholder-content { width: 380px; max-width: 100%; min-width: 0; padding: 56px var(--spacing-10); border: var(--stroke-default) dashed var(--color-foundation-border); border-radius: var(--radius-lg); background: var(--color-foundation-surface); color: var(--color-content-foreground-muted); display: flex; flex-direction: column; align-items: center; gap: var(--spacing-4); text-align: center; }
+.partner-logo-placeholder-content > svg { flex-shrink: 0; }
+.partner-logo-placeholder-content p { margin: 0; font-size: var(--typography-body-sm-font-size); line-height: var(--typography-body-sm-line-height); }
+.partner-logo-placeholder-content strong { color: var(--color-content-foreground); font-size: var(--typography-label-md-font-size); }
+.partner-form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--spacing-6); padding-top: var(--spacing-12); }
+.partner-delete-dialog { overflow-wrap: anywhere; }
+.partner-delete-dialog .spectra-dialog__title { min-width: 0; }
+.partner-delete-dialog--locked .spectra-dialog__header > .spectra-icon-button { display: none; }
+.partner-delete-feedback:focus { outline: 2px solid var(--color-interaction-focus); outline-offset: 2px; }
+/* At reduced heights, scroll the whole confirmation so its footer stays reachable. */
+@media (max-height: 420px) {
+  .partner-delete-dialog { overflow: auto; }
+  .partner-delete-dialog .spectra-dialog__body { flex: 0 0 auto; overflow: visible; }
+}
+@media (max-width: 1063px) {
+  main:has(> .partner-form) { padding: var(--spacing-6); }
+  .partner-form-grid { column-gap: var(--spacing-8); }
+  .partner-form--create .partner-form-fields { grid-column: 1 / -1; width: min(619px, 100%); }
+}
+@media (max-width: 600px) {
+  main:has(> .partner-form) { padding: var(--spacing-2) var(--spacing-4); }
+  .partner-form-grid { display: flex; flex-direction: column; gap: var(--spacing-4); }
+  .partner-form-grid > * { width: 100%; }
+  .partner-form-fields { gap: var(--spacing-6); }
+  .partner-form-panel { margin: var(--spacing-4) 0 0; }
+  .partner-logo-placeholder-content { width: 100%; padding: var(--spacing-6); }
+  .partner-form-actions { justify-content: space-between; gap: var(--spacing-4); padding-block: var(--spacing-12) var(--spacing-6); }
+  .partner-delete-dialog .spectra-dialog__footer { align-items: stretch; flex-direction: column; }
+  .partner-delete-dialog .spectra-dialog__footer > button { width: 100%; }
+}

@@ -1,134 +1,156 @@
-import { useRef, useState, useSyncExternalStore } from "react";
-import type { FormEvent } from "react";
-import { Button, Checkbox, DatePicker, Input, Radio, Select, Textarea, Toast, Dialog, StatusBadge } from "@ftomoda/spectra-design-system";
-import { Save, X, TriangleAlert } from "lucide-react";
-import { PageHeader } from "../../../components/PageHeader";
-import { navigate } from "../../../app/routes";
-import { offerRepository } from "../repository";
-import { calendarDate, creationNotice } from "../creation";
-import type { OfferNotice, PublicationMode } from "../creation";
-import type { Offer } from "../model";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button, Checkbox, Dialog, Input, Radio, Select, StatusBadge, Textarea } from "@ftomoda/spectra-design-system";
+import { Save, Send, Trash2, X } from "lucide-react";
+import type { PersistedOffer, OfferSaveContent } from "../mappers";
+import type { CalendarDate } from "../model";
+import type { OfferNotice } from "../creation";
 import { statusPresentation } from "../list";
-import { dateSelection, publicationComplete } from "../form";
+import { CmsReadNotice } from "../../../app/CmsData";
+import { useCmsData } from "../../../app/useCmsData";
+import { navigate } from "../../../app/routes";
+import { PageHeader } from "../../../components/PageHeader";
+import { PartnerMutationNotice } from "../../partners/components/PartnerMutationNotice";
 import "../create-offer.css";
 
-const dateMessages = { chooseDate: "Escolher data", previousMonth: "Mês anterior", nextMonth: "Próximo mês" };
+/** Calendar validation only; status and business-date rules remain server-owned. */
+function validDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+}
 
-export function OfferForm({ offer: initialOffer, onSaved }: { offer?: Offer; onSaved: (notice: OfferNotice) => void }) {
-  const editing = Boolean(initialOffer);
-  const [status, setStatus] = useState(initialOffer?.status);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
-  const [statusNotice, setStatusNotice] = useState<OfferNotice | null>(null);
-  const { partners } = useSyncExternalStore(offerRepository.subscribe, offerRepository.getSnapshot);
-  const [partnerId, setPartnerId] = useState(initialOffer?.partnerId ?? "");
-  const [title, setTitle] = useState(initialOffer?.title ?? "");
-  const [subtitle, setSubtitle] = useState(initialOffer?.subtitle ?? "");
-  const [description, setDescription] = useState(initialOffer?.description ?? "");
-  const [hasCoupon, setHasCoupon] = useState(initialOffer?.hasCoupon ?? Boolean(initialOffer?.coupon));
-  const [coupon, setCoupon] = useState(initialOffer?.coupon ?? "");
-  const [publicationMode, setPublicationMode] = useState<PublicationMode>(initialOffer?.publicationMode ?? (initialOffer?.status === "scheduled" ? "scheduled" : "now"));
-  const [startsOn, setStartsOn] = useState<Date | null>(dateSelection(initialOffer?.startsOn));
-  const [hasExpiration, setHasExpiration] = useState(initialOffer?.hasExpiration ?? Boolean(initialOffer?.expiresOn));
-  const [expiresOn, setExpiresOn] = useState<Date | null>(dateSelection(initialOffer?.expiresOn));
-  const [saveError, setSaveError] = useState(false);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const complete = publicationComplete({ partnerId, title, description, hasCoupon, coupon, publicationMode, startsOn, hasExpiration, expiresOn });
-    const offer: Offer = {
-      id: initialOffer?.id ?? crypto.randomUUID(), partnerId: initialOffer ? initialOffer.partnerId : partnerId || undefined,
-      title: title.trim(), subtitle: subtitle.trim() || undefined, description: description.trim(),
-      publicationMode, hasCoupon, hasExpiration,
-      coupon: hasCoupon ? coupon.trim() : undefined,
-      startsOn: initialOffer && initialOffer.status !== "draft" ? initialOffer.startsOn : publicationMode === "now" ? (complete ? calendarDate(new Date()) : undefined) : (startsOn ? calendarDate(startsOn) : undefined),
-      expiresOn: hasExpiration && expiresOn ? calendarDate(expiresOn) : undefined,
-      status: initialOffer && initialOffer.status !== "draft" ? status! : complete ? (publicationMode === "now" ? "active" : "scheduled") : "draft",
-    };
-    try {
-      if (initialOffer) offerRepository.update(offer);
-      else offerRepository.save(offer);
-    } catch {
-      setSaveError(true);
-      return;
-    }
-    onSaved(initialOffer ? { offerId: offer.id, variant: "success", title: "Oferta modificada", description: partnerName ? `Oferta do ${partnerName} foi modificada com sucesso` : "Oferta foi modificada com sucesso" } : creationNotice(offer, partnerName));
+export function OfferForm({ offer }: { offer?: PersistedOffer; onSaved: (notice: OfferNotice) => void }) {
+  const { partners, offerCreateBlocked, status, refreshing, refreshFailed, mutationState, mutateOffer } = useCmsData();
+  const [content, setContent] = useState<OfferSaveContent>(() => ({ partnerId: offer?.partnerId, title: offer?.title ?? "", subtitle: offer?.subtitle, description: offer?.description ?? "", publicationMode: offer?.publicationMode ?? "now", hasCoupon: offer?.hasCoupon ?? false, coupon: offer?.coupon, hasExpiration: offer?.hasExpiration ?? false, startsOn: offer?.startsOn, expiresOn: offer?.expiresOn }));
+  const [invalid, setInvalid] = useState(false);
+  const [dateErrors, setDateErrors] = useState<{ start?: string; expiration?: string }>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const cancelDelete = useRef<HTMLButtonElement>(null);
+  const deletionFeedback = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const requirementsId = useId();
+  const publicationName = useId();
+  const deleteRuleId = useId();
+  const disabled = (!offer && offerCreateBlocked) || Boolean(refreshing || refreshFailed) || !["idle", "rejected", "confirmed"].includes(mutationState);
+  const published = Boolean(offer?.publishedAt);
+  const deletionUnresolved = ["pending", "uncertain", "refresh-failed"].includes(mutationState);
+  const canDelete = Boolean(offer && offer.status !== "active");
+  function changeDeleteOpen(open: boolean) {
+    if (!open && deletionUnresolved) return;
+    setConfirmDelete(open);
   }
-
-  const partnerName = partners.find(partner => partner.id === partnerId)?.name;
-  function changeStatus() {
-    if (!initialOffer || (status !== "active" && status !== "inactive" && status !== "scheduled")) return;
-    const nextStatus = status === "active" ? "inactive" : "active";
-    const stored = offerRepository.getById(initialOffer.id);
-    if (!stored) return;
-    if (nextStatus === "active") offerRepository.activate(stored.id);
-    else offerRepository.update({ ...stored, status: nextStatus });
-    if (status === "scheduled") {
-      onSaved({ offerId: initialOffer.id, variant: "success", title: "Oferta ativada", description: "A oferta já está disponível para os usuários." });
-      return;
+  useEffect(() => {
+    if (confirmDelete && deletionUnresolved) deletionFeedback.current?.focus({ preventScroll: true });
+  }, [confirmDelete, deletionUnresolved]);
+  function patch(value: Partial<OfferSaveContent>) { setContent(current => ({ ...current, ...value })); setInvalid(false); setDateErrors({}); }
+  function save(publish: boolean) {
+    if (disabled) return;
+    const requiresComplete = publish || published;
+    const start = published || content.publicationMode === "scheduled" ? content.startsOn : undefined;
+    const expiration = content.hasExpiration ? content.expiresOn : undefined;
+    const dates: { start?: string; expiration?: string } = {};
+    if (start && !validDate(start)) dates.start = "Informe uma data de início válida.";
+    if (expiration && !validDate(expiration)) dates.expiration = "Informe uma data de expiração válida.";
+    if (!dates.start && !dates.expiration && start && expiration && expiration < start) dates.expiration = "A expiração não pode ser anterior ao início.";
+    // A first scheduled publication must start today or later in São Paulo.
+    // This is feedback only: the backend clock/constraints remain authoritative.
+    if (publish && !published) {
+      const parts = new Intl.DateTimeFormat("en", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+      const today = ["year", "month", "day"].map(type => parts.find(part => part.type === type)?.value).join("-");
+      if (content.publicationMode === "scheduled" && start && !dates.start && start < today) dates.start = "Escolha hoje ou uma data futura para agendar.";
+      if (content.publicationMode === "now" && expiration && !dates.expiration && expiration < today) dates.expiration = "A expiração não pode ser anterior ao início da publicação de hoje.";
     }
-    if (nextStatus === "inactive") {
-      onSaved({ offerId: initialOffer.id, variant: "warning", title: "Oferta desativada", description: "A oferta não está mais disponível para os usuários." });
-      return;
-    }
-    setStatus(nextStatus);
-    setStatusNotice({ offerId: initialOffer.id, variant: "success", title: "Oferta reativada", description: `Oferta do ${partnerName} foi reativada com sucesso` });
+    setDateErrors(dates);
+    const missing = requiresComplete && (!content.partnerId || !content.title.trim() || !content.description.trim() || (content.hasCoupon && !content.coupon?.trim()) || (content.publicationMode === "scheduled" && !content.startsOn) || (content.hasExpiration && !content.expiresOn));
+    setInvalid(Boolean(missing));
+    if (missing || dates.start || dates.expiration) return;
+    void mutateOffer({ kind: "save", id: offer?.id ?? null, publish, content: { ...content, title: content.title.trim(), description: content.description.trim(), coupon: content.hasCoupon ? content.coupon : undefined, expiresOn: content.hasExpiration ? content.expiresOn : undefined, startsOn: published || content.publicationMode === "scheduled" ? content.startsOn : undefined } });
   }
-  function deleteOffer() {
-    if (!initialOffer || status !== "inactive") return;
-    offerRepository.remove(initialOffer.id);
-    setDialogOpen(false);
-    onSaved({ offerId: initialOffer.id, variant: "success", title: "Oferta excluida", description: `Oferta do ${partnerName} foi excluída com sucesso` });
-  }
-
-  return <div className="create-offer">
-    <PageHeader title={editing ? "EDITAR OFERTA" : "NOVA OFERTA"} description={editing ? "Modifique e exclua as ofertas" : undefined} className={editing ? "edit-offer-header" : "create-offer-header"} />
-    {statusNotice && <Toast className="creation-toast" variant={statusNotice.variant} title={statusNotice.title} description={statusNotice.description} closeLabel="Fechar notificação" onDismiss={() => setStatusNotice(null)} />}
-    {saveError && <Toast className="creation-toast" variant="error" title={editing ? "Não foi possível modificar a oferta" : "Não foi possível adicionar a oferta"} description="Por favor tente novamente mais tarde" closeLabel="Fechar notificação" onDismiss={() => setSaveError(false)} />}
-    <form noValidate onSubmit={submit} aria-label={editing ? "Editar oferta" : "Criar oferta"}>
-      <div className="create-offer-columns">
-        <div className="create-offer-fields">
-          {editing ? <Input className="create-offer-input" label="Parceiro" disabled value={partnerName ?? "-"} /> : <Select className="create-offer-partner" name="partnerId" label="Parceiro" required placeholder="Escolha uma opção" options={partners.map(partner => ({ value: partner.id, label: partner.name }))} value={partnerId} onValueChange={setPartnerId} />}
-          <Input className="create-offer-input" name="title" label="Título" required placeholder="ex: 10% de desconto na primeira compra" value={title} onChange={event => setTitle(event.target.value)} />
-          <Input className="create-offer-input" name="subtitle" label="Subtítulo" placeholder="ex: Cadastre-se e aproveite o desconto" value={subtitle} onChange={event => setSubtitle(event.target.value)} />
-          <Textarea name="description" label="Descriçao" required placeholder="ex: Ganhe 10% de desconto na primeira compra, após realizar cadastro. Válido apenas para novos cadastros." value={description} onChange={event => setDescription(event.target.value)} />
-          <div className={hasCoupon ? "create-offer-coupon create-offer-coupon--expanded" : "create-offer-coupon"}>
-            <Checkbox label="Esta oferta possui um cupom" checked={hasCoupon} onChange={event => setHasCoupon(event.target.checked)} />
-            {hasCoupon && <Input className="create-offer-input" name="coupon" label="Cupom" required placeholder="ex: OFERTA10" value={coupon} onChange={event => setCoupon(event.target.value)} />}
+  useEffect(() => {
+    if (invalid || dateErrors.start || dateErrors.expiration) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [invalid, dateErrors]);
+  const missingPartner = invalid && !content.partnerId;
+  const missingTitle = invalid && !content.title.trim();
+  const missingDescription = invalid && !content.description.trim();
+  const missingCoupon = invalid && content.hasCoupon && !content.coupon?.trim();
+  const missingStart = invalid && content.publicationMode === "scheduled" && !content.startsOn;
+  const missingExpiration = invalid && content.hasExpiration && !content.expiresOn;
+  if (status !== "ready") return <CmsReadNotice />;
+  return <section className={`offer-form${offer ? " offer-form--edit" : " offer-form--create"}`}>
+    <PageHeader title={offer ? "EDITAR OFERTA" : "NOVA OFERTA"} description={offer ? "Modifique os dados da oferta" : "Crie ofertas para os parceiros"} />
+    <p id={requirementsId} className="offer-form-help">Campos com * são obrigatórios para publicar. Rascunhos podem ficar incompletos.</p>
+    {invalid && <p role="alert" className="offer-form-error">Preencha parceiro, título, descrição e os campos opcionais ativados. Ofertas publicadas devem permanecer completas.</p>}
+    {(dateErrors.start || dateErrors.expiration) && <p role="alert" className="offer-form-error">{dateErrors.start} {dateErrors.expiration}</p>}
+    <form ref={formRef} noValidate aria-label={offer ? "Editar oferta" : "Criar oferta"} aria-describedby={requirementsId} aria-busy={mutationState === "pending"}
+      onSubmit={event => { event.preventDefault(); save(false); }}>
+      <fieldset className="offer-form-fieldset" disabled={disabled}>
+        <legend className="offer-form-sr-only">Dados da oferta</legend>
+        <div className={`offer-form-grid${offer ? " offer-form-grid--edit" : ""}`}>
+          {offer && <section className="offer-form-panel offer-form-status" aria-label="Situação da oferta">
+            <div className="offer-form-status-row"><span>Status:</span><StatusBadge variant={statusPresentation[offer.status].variant}>{statusPresentation[offer.status].label}</StatusBadge></div>
+            <p>Habilitada: {offer.enabled ? "Sim" : "Não"}</p>
+            <div className="offer-form-status-actions">
+              {published && <Button type="button" variant="tertiary" size="sm" disabled={disabled} onClick={() => { void mutateOffer({ kind: "enabled", id: offer.id, enabled: !offer.enabled }); }}>{offer.enabled ? "Desabilitar" : "Habilitar"}</Button>}
+              {offer.status === "scheduled" && <Button type="button" variant="tertiary" size="sm" disabled={disabled} onClick={() => { void mutateOffer({ kind: "activate", id: offer.id }); }}>Ativar agora</Button>}
+            </div>
+            <p>Habilitar preserva as datas; uma oferta expirada pode continuar expirada.</p>
+            <p id={deleteRuleId}>{offer.status === "active" ? "Desabilite a oferta e, depois, confirme a exclusão." : "A exclusão preserva o histórico de associação do parceiro."}</p>
+            <Button type="button" variant="destructive" size="sm" aria-describedby={deleteRuleId} disabled={disabled || !canDelete} onClick={() => setConfirmDelete(true)}>Excluir oferta</Button>
+          </section>}
+          <div className="offer-form-fields">
+            <Select label="Parceiro" name="partnerId" value={content.partnerId ?? ""} disabled={disabled || published}
+              options={[{ value: "", label: "Sem parceiro" }, ...partners.map(partner => ({ value: partner.id, label: partner.name }))]}
+              validationState={missingPartner ? "error" : "default"} helperText={missingPartner ? "Escolha um parceiro para publicar." : published ? "Parceiro vinculado à publicação; associação bloqueada." : "Obrigatório para publicar; opcional no rascunho."}
+              onValueChange={value => patch({ partnerId: value || undefined })} />
+            <Input className="offer-publish-required" label="Título" aria-label="Título" name="title" aria-required={published || invalid} aria-describedby={requirementsId} placeholder="ex: 10% de desconto na primeira compra"
+              value={content.title} disabled={disabled} state={missingTitle ? "error" : "default"} supportingText="Informe o título para publicar." showSupportingText={missingTitle}
+              onChange={event => patch({ title: event.target.value })} />
+            <Input label="Subtítulo" name="subtitle" placeholder="ex: Cadastre-se e aproveite o desconto" value={content.subtitle ?? ""} disabled={disabled} onChange={event => patch({ subtitle: event.target.value })} />
+            <Textarea className="offer-publish-required" label="Descrição" aria-label="Descrição" name="description" aria-required={published || invalid} aria-describedby={requirementsId} rows={4}
+              placeholder="ex: Ganhe 10% de desconto na primeira compra, após realizar cadastro. Válido apenas para novos cadastros."
+              value={content.description} disabled={disabled} validationState={missingDescription ? "error" : "default"} supportingText="Informe a descrição para publicar." showSupportingText={missingDescription}
+              onChange={event => patch({ description: event.target.value })} />
+            <div className="offer-form-coupon">
+              <Checkbox label="Esta oferta possui um cupom" checked={content.hasCoupon} disabled={disabled} onChange={event => patch({ hasCoupon: event.target.checked })} />
+              {content.hasCoupon && <Input className="offer-publish-required" label="Cupom" aria-label="Cupom" name="coupon" aria-required={published || invalid} aria-describedby={requirementsId}
+                value={content.coupon ?? ""} disabled={disabled} state={missingCoupon ? "error" : "default"} supportingText="Informe o cupom para publicar." showSupportingText={missingCoupon}
+                onChange={event => patch({ coupon: event.target.value })} />}
+            </div>
+          </div>
+          <section className="offer-form-panel offer-form-publication" aria-label="Publicação">
+            <div role="radiogroup" aria-label="Modo de publicação" className="offer-form-publication-options">
+              <Radio name={publicationName} label="Publicar agora" supportingText="A oferta ficará disponível imediatamente" showSupportingText checked={content.publicationMode === "now"} disabled={disabled || published} onChange={() => patch({ publicationMode: "now" })} />
+              <Radio name={publicationName} label="Agendar publicação" supportingText="Escolha a data de início da oferta" showSupportingText checked={content.publicationMode === "scheduled"} disabled={disabled || published} onChange={() => patch({ publicationMode: "scheduled" })} />
+            </div>
+            {(published || content.publicationMode === "scheduled") && <Input type="date" label="Início" name="startsOn" value={content.startsOn ?? ""} disabled={disabled || published}
+              aria-invalid={missingStart || Boolean(dateErrors.start)} state={missingStart || dateErrors.start ? "error" : "default"} supportingText={dateErrors.start ?? "Informe o início para agendar a publicação."} showSupportingText={missingStart || Boolean(dateErrors.start)}
+              onChange={event => patch({ startsOn: (event.target.value || undefined) as CalendarDate | undefined })} />}
+          </section>
+          <section className="offer-form-panel offer-form-expiration" aria-label="Expiração">
+            <Checkbox label="Data de expiração" supportingText="Ative esta opção se a oferta tem data de expiração" showSupportingText checked={content.hasExpiration} disabled={disabled} onChange={event => patch({ hasExpiration: event.target.checked })} />
+            {content.hasExpiration && <Input type="date" label="Expiração" name="expiresOn" value={content.expiresOn ?? ""} disabled={disabled}
+              aria-invalid={missingExpiration || Boolean(dateErrors.expiration)} state={missingExpiration || dateErrors.expiration ? "error" : "default"} supportingText={dateErrors.expiration ?? "Informe a data de expiração para publicar."} showSupportingText={missingExpiration || Boolean(dateErrors.expiration)}
+              onChange={event => patch({ expiresOn: (event.target.value || undefined) as CalendarDate | undefined })} />}
+          </section>
+        </div>
+        <p className="offer-form-help">Datas consideradas no horário de São Paulo.</p>
+        <div className="offer-form-actions">
+          <Button type="button" variant="tertiary" leadingIcon={<X size={16} aria-hidden="true" />} disabled={disabled} onClick={() => navigate("/offers")}>Cancelar</Button>
+          <div className="offer-form-save-actions">
+            <Button type="submit" variant={published ? "primary" : "secondary"} leadingIcon={<Save size={16} aria-hidden="true" />} disabled={disabled}>{published ? "Salvar alterações" : "Salvar rascunho"}</Button>
+            {!published && <Button type="button" leadingIcon={<Send size={16} aria-hidden="true" />} disabled={disabled} onClick={() => save(true)}>{content.publicationMode === "scheduled" ? "Agendar publicação" : "Publicar agora"}</Button>}
           </div>
         </div>
-        <div className="create-offer-options">
-          {editing ? <div className="create-offer-panel edit-offer-status">
-            <div className="create-offer-conditional">
-              <div className="edit-offer-status-row"><span>Status:</span><StatusBadge variant={statusPresentation[status!].variant}>{statusPresentation[status!].label}</StatusBadge></div>
-              {(status === "active" || status === "inactive" || status === "scheduled") && <Button type="button" variant="tertiary" size="sm" onClick={changeStatus}>{status === "active" ? "Desativar oferta" : status === "scheduled" ? "Ativar oferta" : "Reativar oferta"}</Button>}
-            </div>
-            <div className="create-offer-conditional">
-              {status === "active" && <p id="delete-explanation">Para excluir esta oferta, desative-a primeiro.Ofertas ativas não podem ser excluídas.</p>}
-              {status === "inactive" && <p id="delete-explanation">A exclusão da oferta é permanente e não pode ser desfeita</p>}
-              {(status === "active" || status === "inactive") && <Button type="button" variant="destructive" size="sm" disabled={status === "active"} aria-describedby="delete-explanation" onClick={() => setDialogOpen(true)}>Excluir oferta</Button>}
-            </div>
-          </div> : <fieldset className="create-offer-panel" aria-label="Publicação">
-            <Radio name="publicationMode" value="now" label="Publicar agora" supportingText="A oferta ficará disponível imediatamente" showSupportingText checked={publicationMode === "now"} onChange={() => setPublicationMode("now")} />
-            <div className="create-offer-conditional">
-              <Radio name="publicationMode" value="scheduled" label="Agendar publicação" supportingText="Escolha a data de início da oferta" showSupportingText checked={publicationMode === "scheduled"} onChange={() => setPublicationMode("scheduled")} />
-              {publicationMode === "scheduled" && <DatePicker style={{ width: "min(320px, 100%)" }} label="Data" aria-label="Data de publicação" aria-required="true" placeholder="DD/MM/AAAA" locale="pt-BR" messages={dateMessages} value={startsOn} onChange={setStartsOn} />}
-            </div>
-          </fieldset>}
-          <div className="create-offer-panel create-offer-conditional">
-            <Checkbox label="Data de expiração" supportingText={editing ? "Defina quando esta oferta deve expirar" : "Ative esta opção se a oferta tem data de expiração"} showSupportingText checked={hasExpiration} onChange={event => setHasExpiration(event.target.checked)} />
-            {hasExpiration && <DatePicker style={{ width: "min(320px, 100%)" }} label="Data" aria-label="Data de expiração" aria-required="true" placeholder="DD/MM/AAAA" locale="pt-BR" messages={dateMessages} value={expiresOn} onChange={setExpiresOn} />}
-          </div>
-        </div>
-      </div>
-      <div className="create-offer-actions">
-        <Button type="button" variant="tertiary" leadingIcon={<X size={16} aria-hidden="true" />} onClick={() => navigate("/offers")}>Cancelar</Button>
-        <Button type="submit" leadingIcon={<Save size={16} aria-hidden="true" />}>Salvar</Button>
-      </div>
+      </fieldset>
     </form>
-    {editing && <Dialog open={dialogOpen} onOpenChange={setDialogOpen} role="alertdialog" title="Excluir oferta?" description="Esta ação não poderá ser desfeita." leadingIcon={<TriangleAlert size={24} aria-hidden="true" />} closeLabel="Fechar diálogo" initialFocusRef={cancelDeleteRef} footer={<>
-      <Button ref={cancelDeleteRef} type="button" variant="tertiary" size="sm" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-      <Button type="button" variant="destructive" size="sm" onClick={deleteOffer}>Excluir oferta</Button>
-    </>} /> }
-  </div>;
+    <Dialog open={confirmDelete} onOpenChange={changeDeleteOpen} title="Excluir oferta?" description={`Excluir a oferta “${offer?.title || "Sem título"}”? Esta ação não pode ser desfeita pelo CMS.`} role="alertdialog" closeLabel="Fechar confirmação de exclusão" initialFocusRef={cancelDelete} leadingIcon={<Trash2 size={24} aria-hidden="true" />} footer={<>
+      <Button ref={cancelDelete} type="button" variant="tertiary" disabled={deletionUnresolved} onClick={() => changeDeleteOpen(false)}>Cancelar</Button>
+      <Button type="button" variant="destructive" disabled={disabled || !canDelete} onClick={() => { if (offer) void mutateOffer({ kind: "delete", id: offer.id }); }}>Confirmar exclusão</Button>
+    </>}>
+      <p>Ofertas ativas precisam ser desabilitadas antes de excluir. O histórico do parceiro será preservado.</p>
+      {confirmDelete && <div ref={deletionFeedback} tabIndex={-1} aria-label="Resultado da exclusão"><PartnerMutationNotice /></div>}
+    </Dialog>
+  </section>;
 }

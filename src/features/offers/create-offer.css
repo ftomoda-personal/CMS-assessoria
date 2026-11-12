@@ -19,3 +19,53 @@
   .create-offer-columns { grid-template-columns: minmax(0, 1fr); gap: var(--spacing-8); }
   .create-offer-options { padding-top: 0; }
 }
+
+/* Active Offer form only; legacy toast/listing styles above remain unchanged. */
+main:has(> .offer-form) { padding: var(--spacing-8) var(--spacing-12); }
+.offer-form { min-width: 0; overflow-wrap: anywhere; }
+.offer-form-help { margin: var(--spacing-2) 0 var(--spacing-4); color: var(--color-content-foreground-muted); font-size: var(--typography-caption-font-size); line-height: var(--typography-caption-line-height); }
+.offer-form-error { color: var(--color-semantics-error); }
+.offer-form-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.offer-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: min-content 1fr; column-gap: var(--spacing-16); row-gap: var(--spacing-8); align-items: start; }
+.offer-form-grid--edit { grid-template-rows: min-content min-content 1fr; }
+.offer-form-fields { grid-column: 1; grid-row: 1 / -1; min-width: 0; display: flex; flex-direction: column; gap: var(--spacing-8); }
+.offer-form-panel { grid-column: 2; min-width: 0; margin: 0; padding: var(--spacing-6) var(--spacing-4); border: var(--stroke-default) solid var(--color-foundation-border); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--spacing-6); }
+.offer-form-status { grid-row: 1; margin-top: var(--spacing-6); }
+.offer-form-publication { grid-row: 1; margin-top: var(--spacing-6); }
+.offer-form-expiration { grid-row: 2; }
+.offer-form-grid--edit .offer-form-publication { grid-row: 2; margin-top: 0; }
+.offer-form-grid--edit .offer-form-expiration { grid-row: 3; }
+.offer-form-status-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-6); font-weight: var(--typography-label-lg-font-weight); }
+.offer-form-status p { margin: 0; color: var(--color-content-foreground-muted); }
+.offer-form-status-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-2); }
+.offer-form-publication-options { display: flex; flex-direction: column; gap: var(--spacing-6); }
+.offer-form-coupon { display: flex; flex-direction: column; gap: var(--spacing-3); }
+.offer-form .spectra-input, .offer-form .spectra-textarea, .offer-form .spectra-select { width: 100%; min-width: 0; max-width: 100%; }
+.offer-form .spectra-input__control, .offer-form .spectra-textarea__field { min-width: 0; }
+.offer-form .spectra-textarea__field { min-height: 120px; }
+.offer-form .spectra-select__option-label { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.offer-form .spectra-select__menu { max-width: 100%; }
+/* Visual publication requirements must not make incomplete draft submits invalid. */
+.offer-publish-required .spectra-input__label::after,
+.offer-publish-required .spectra-textarea__label::after { content: " *"; color: var(--color-semantics-error); }
+.offer-form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--spacing-6); padding-top: var(--spacing-8); }
+.offer-form-save-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-4); }
+.offer-form-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.offer-form--create .page-header p { display: none; }
+@media (max-width: 1063px) {
+  main:has(> .offer-form) { padding: var(--spacing-6); }
+  .offer-form-grid { column-gap: var(--spacing-8); }
+  .offer-form--create .page-header p { display: block; }
+}
+@media (max-width: 600px) {
+  main:has(> .offer-form) { padding: var(--spacing-2) var(--spacing-4); }
+  .offer-form-grid { display: flex; flex-direction: column; gap: var(--spacing-4); }
+  .offer-form-grid > * { width: 100%; }
+  .offer-form-fields { gap: var(--spacing-4); }
+  .offer-form-panel { margin-top: 0; }
+  .offer-form-status { padding: var(--spacing-4) var(--spacing-2); gap: var(--spacing-4); }
+  .offer-form .page-header p { display: none; }
+  .offer-form-actions { justify-content: space-between; align-items: flex-start; gap: var(--spacing-4); padding-block: var(--spacing-6); }
+  .offer-form-save-actions { flex: 1 1 100%; flex-direction: column; align-items: stretch; }
+  .offer-form-save-actions > button { width: 100%; }
+}

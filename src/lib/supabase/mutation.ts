@@ -4,6 +4,14 @@ declare const sessionGuardBrand: unique symbol;
 /** Opaque, process-local capability; JSON serialization is explicitly prohibited. */
 export interface SessionContinuityGuard { readonly [sessionGuardBrand]: true }
 export interface MutationOptions { readonly signal?: AbortSignal; readonly sessionGuard?: SessionContinuityGuard }
+const mutationAttempts = new WeakMap<MutationOptions, { dispatched: boolean }>();
+/** Process-local observation for one repository call, not server idempotency or history. */
+export function createMutationAttempt(input: MutationOptions) {
+  const options: MutationOptions = Object.freeze({ ...input });
+  const evidence = { dispatched: false };
+  mutationAttempts.set(options, evidence);
+  return { options, wasDispatched: () => evidence.dispatched };
+}
 type SessionIdentity = { userId: string; sessionId: string };
 const sessionGuards = new WeakMap<SessionContinuityGuard, { auth: ReadClient["auth"]; identity: SessionIdentity; invalidated: boolean }>();
 // Verified-token cache is private and bounded to one token per auth client.
@@ -125,6 +133,13 @@ export function classifyMutationRejection(code?: string, httpStatus?: number): M
   return new MutationError(kind, code, httpStatus);
 }
 
+/** Only for an actual write response, never a locally constructed/preflight error.
+ * Unknown gateway errors/timeouts cannot establish transaction rollback. */
+export function isDefinitiveDatabaseRejection(code?: string, httpStatus?: number): boolean {
+  return [400, 401, 403, 404, 409, 422].includes(httpStatus ?? 0)
+    && ["42501", "23505", "40001", "40P01", "P0001", "P0002", "23503", "23514", "23502", "22007", "22P02"].includes(code ?? "");
+}
+
 export interface MutationLifecycle {
   /** Await immediately before dispatch. Checks session and current admin membership. */
   prepareDispatch(): Promise<void>;
@@ -194,6 +209,8 @@ export async function createMutationLifecycle(client: ReadClient, options: Mutat
       if (dispatched || !prepared) throw new MutationError("response");
       if (signal?.aborted) throw new MutationError("cancelled");
       dispatched = true;
+      const attempt = mutationAttempts.get(options);
+      if (attempt) attempt.dispatched = true;
       prepared = false;
     },
     async verifyBeforeDispatch() {
@@ -210,4 +227,9 @@ export async function createMutationLifecycle(client: ReadClient, options: Mutat
       catch { return false; }
     },
   };
+}
+
+/** Verified UUID identity only; no tokens or claims escape observation. */
+export async function verifiedMutationIdentity(client: ReadClient, signal?: AbortSignal): Promise<Readonly<{ userId: string; sessionId: string }>> {
+  return Object.freeze(await observeIdentity(client, signal));
 }

@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
+import { isRecoveryEntry } from "../features/auth/recovery/entry";
+
+export const studentPath = "/student";
 
 type Route = { pattern: RegExp; section: "offers" | "partners"; title: string; description?: string; page?: "offer-list" | "offer-create" | "offer-edit" | "partner-list" | "partner-create" | "partner-edit"; offerId?: string; partnerId?: string };
 const routes: readonly Route[] = [
@@ -29,7 +32,7 @@ export function safeCmsDestination(destination: string | null): string | null {
   if (!destination || !destination.startsWith("/") || destination.startsWith("//") || hasUnsafeCharacters(destination)) return null;
   try {
     const url = new URL(destination, window.location.origin);
-    if (url.origin !== window.location.origin || !routes.some(route => route.pattern.test(url.pathname))) return null;
+    if (url.origin !== window.location.origin || isRecoveryEntry(url) || !routes.some(route => route.pattern.test(url.pathname))) return null;
     const decoded = decodeURIComponent(url.pathname);
     if (hasUnsafeCharacters(decoded) || decoded.includes("//")) return null;
     return url.pathname + url.search + url.hash;

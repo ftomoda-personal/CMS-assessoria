@@ -5,20 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && tsc -p tsconfig.server.json --noEmit && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
+    "test:backend": "node --test tests/cms-backend-boundary.test.ts"
   },
   "dependencies": {
     "@ftomoda/spectra-design-system": "file:vendor/ftomoda-spectra-design-system-0.1.1.tgz",
     "@supabase/supabase-js": "2.117.2",
     "lucide-react": "^1.46.0",
+    "pg": "8.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
+    "@types/pg": "8.23.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",

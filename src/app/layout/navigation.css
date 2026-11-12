@@ -1,0 +1,69 @@
+.cms-navigation { position: relative; z-index: 10; }
+.cms-navigation .spectra-navbar { min-height: var(--spacing-16); }
+.cms-navigation .spectra-navbar__desktop { padding-inline: var(--spacing-12); }
+.cms-navigation .spectra-navbar__mobile-header { padding-inline: var(--spacing-4); }
+.cms-navigation .cms-brand-name { display: flex; }
+.cms-navigation .cms-brand-name > span { display: block; }
+.cms-desktop-account { min-width: 0; }
+.cms-overlay-account, .cms-overlay-theme, .cms-signout-feedback--compact { display: none; }
+.cms-navigation [hidden] { display: none; }
+@container (min-width: 601px) {
+  .cms-navigation .spectra-navbar__mobile-header { padding-inline: var(--spacing-6); }
+}
+.cms-navigation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-foundation-background-overlay);
+  backdrop-filter: blur(var(--spacing-1));
+  -webkit-backdrop-filter: blur(var(--spacing-1));
+  touch-action: none;
+}
+/* Apply fixed positioning with Spectra's own state immediately, before the adapter
+   effect runs, so its expanding panel cannot move the document's scroll anchor. */
+.cms-navigation--overlay .spectra-navbar__mobile,
+.cms-navigation .spectra-navbar__mobile:has(button[aria-expanded="true"]) {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1001;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-foundation-background);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border: var(--stroke-default) solid var(--color-foundation-border);
+}
+.cms-navigation--overlay .spectra-navbar__mobile-header {
+  min-height: calc(var(--spacing-12) + var(--spacing-2));
+  height: auto;
+  padding: var(--spacing-1) var(--spacing-2);
+}
+.cms-navigation--overlay .spectra-navbar__mobile-brand { height: auto; }
+.cms-navigation--overlay .cms-brand,
+.cms-navigation--overlay .cms-desktop-account,
+.cms-navigation--overlay .cms-signout-feedback--outside { display: none; }
+.cms-navigation--overlay .cms-overlay-account { display: block; min-width: 0; padding-inline: var(--spacing-4); }
+.cms-navigation--overlay .cms-overlay-account .cms-admin { border: 0; padding: 0; }
+.cms-navigation--overlay .cms-admin-email { max-width: min(60vw, calc(var(--spacing-12) * 6)); }
+.cms-navigation--overlay .spectra-navbar__mobile-header > button { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+.cms-navigation--overlay .spectra-navbar__mobile-navigation {
+  padding: var(--spacing-4);
+  gap: var(--spacing-2);
+}
+.cms-navigation--overlay .spectra-navbar__link { width: 100%; min-height: 44px; }
+.cms-navigation--overlay .spectra-navbar__mobile-actions,
+.cms-navigation--overlay .spectra-navbar__custom-actions { display: block; padding: 0; width: 100%; }
+.cms-navigation--overlay .cms-nav-actions { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.cms-navigation--overlay .cms-overlay-theme {
+  display: block;
+  padding: var(--spacing-2) var(--spacing-4);
+  border-bottom: var(--stroke-default) solid var(--color-foundation-border);
+}
+.cms-navigation--overlay .cms-overlay-theme button { min-height: 44px; }
+.cms-navigation--overlay .cms-signout {
+  min-height: 44px;
+  margin: var(--spacing-4) var(--spacing-2);
+  width: calc(100% - 2 * var(--spacing-2));
+}
+.cms-navigation--overlay .cms-signout-feedback--compact:has(> *) { display: block; }
+.cms-navigation--overlay .cms-signout-feedback { width: 100%; min-width: 0; }

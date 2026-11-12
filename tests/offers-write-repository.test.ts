@@ -2,10 +2,10 @@ import type { ReadClient } from "../src/lib/supabase/readDataset.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createClient } from "@supabase/supabase-js";
-import { createOffersWriteRepository } from "../src/features/offers/supabaseWriteRepository.ts";
+import { createOffersWriteRepository, isOfferWriteRejected } from "../src/features/offers/supabaseWriteRepository.ts";
 import type { OffersWriteClient, OfferWriteResult } from "../src/features/offers/supabaseWriteRepository.ts";
 import type { OfferSaveContent } from "../src/features/offers/mappers.ts";
-import { MutationError } from "../src/lib/supabase/mutation.ts";
+import { createMutationAttempt, MutationError } from "../src/lib/supabase/mutation.ts";
 
 const id = "AAAAAAAA-0000-0000-0000-000000000001";
 const partnerId = "BBBBBBBB-0000-0000-0000-000000000002";
@@ -205,4 +205,54 @@ test("migration-defined Unknown Offer is missing while other P0001 rules remain 
   await assert.rejects(f.repo.softDelete(id), fails("missing"));
   const g = fixture({ code: "P0001", message: "Published Offer required" });
   await assert.rejects(g.repo.setEnabled(id, true), fails("domain"));
+});
+
+for (const mode of ["invalid-input", "missing-session", "membership-denied", "aborted"] as const) test(`attempt proves nondispatch: ${mode}`, async () => {
+  const f = fixture({ noSession: mode === "missing-session", member: mode !== "membership-denied" });
+  const controller = new AbortController();
+  if (mode === "aborted") controller.abort();
+  const attempt = createMutationAttempt({ signal: controller.signal });
+  await assert.rejects(async () => f.repo.save(content, { id: null, publish: mode === "invalid-input" ? undefined as unknown as boolean : false }, attempt.options));
+  assert.equal(attempt.wasDispatched(), false);
+  assert.equal(f.writes().length, 0);
+});
+
+for (const [code, status] of [["23514", 400], ["23503", 409], ["P0001", 400], ["42501", 403]] as const) test(`write rejection evidence is local and dispatched: ${code}`, async () => {
+  const f = fixture({ code, status, message: "private raw content" });
+  const attempt = createMutationAttempt({});
+  await assert.rejects(f.repo.save(content, { id: null, publish: false }, attempt.options), error => {
+    assert.ok(error instanceof MutationError);
+    assert.equal(isOfferWriteRejected(error), true);
+    assert.equal(isOfferWriteRejected(new MutationError(error.kind, error.code, error.httpStatus)), false);
+    assert.equal(isOfferWriteRejected(JSON.parse(JSON.stringify(error))), false);
+    assert.doesNotMatch(error.message + JSON.stringify(error), /private raw content|test-token/);
+    return true;
+  });
+  assert.equal(attempt.wasDispatched(), true);
+  assert.equal(f.writes().length, 1);
+});
+
+for (const options of [{ network: true }, { code: "23514", status: 503 }, { code: "23514", status: 408 }, { code: "PGRST999", status: 400 }]) test(`ambiguous write has no rejection proof: ${JSON.stringify(options)}`, async () => {
+  const f = fixture(options);
+  const attempt = createMutationAttempt({});
+  const result = await f.repo.save(content, { id: null, publish: false }, attempt.options);
+  assert.equal(attempt.wasDispatched(), true);
+  assert.equal(result.outcome, "uncertain");
+  if (result.outcome === "uncertain") {
+    assert.equal(isOfferWriteRejected(result.error), false);
+    assert.equal(result.error.retryAutomatically, false);
+  }
+  assert.equal(f.writes().length, 1);
+});
+
+test("membership rejection is not write-rejection evidence", async () => {
+  const f = fixture({ member: false });
+  const attempt = createMutationAttempt({});
+  await assert.rejects(f.repo.save(content, { id: null, publish: false }, attempt.options), error => {
+    assert.ok(error instanceof MutationError);
+    assert.equal(isOfferWriteRejected(error), false);
+    return true;
+  });
+  assert.equal(attempt.wasDispatched(), false);
+  assert.equal(f.writes().length, 0);
 });

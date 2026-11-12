@@ -1,7 +1,7 @@
 import type { OfferReadRow, OfferRpcContracts, OfferRow } from "../../lib/supabase/database.types";
 import type { ReadClient } from "../../lib/supabase/readDataset";
 import { validateRow } from "../../lib/supabase/readDataset.ts";
-import { classifyMutationRejection, createMutationLifecycle, MutationError, parsePersistedUuid } from "../../lib/supabase/mutation.ts";
+import { classifyMutationRejection, createMutationLifecycle, isDefinitiveDatabaseRejection, MutationError, parsePersistedUuid } from "../../lib/supabase/mutation.ts";
 import type { ConfirmedDeletion, ConfirmedPersistence, FollowUp, MutationLifecycle, MutationOptions, PersistedUuid, UncertainMutation } from "../../lib/supabase/mutation";
 import { mapOfferRow, mapOfferSave } from "./mappers.ts";
 import type { OfferSaveContent, PersistedOffer } from "./mappers";
@@ -14,6 +14,11 @@ export interface ConfirmedOfferPersistence extends ConfirmedPersistence<Persiste
 }
 export type OfferWriteResult = ConfirmedOfferPersistence | UncertainMutation;
 export type OfferDeleteResult = ConfirmedDeletion | UncertainMutation;
+const rejectedWrites = new WeakSet<MutationError>();
+/** Only exact process-local errors from a definitive write response qualify. */
+export function isOfferWriteRejected(error: unknown): boolean {
+  return error instanceof MutationError && rejectedWrites.has(error);
+}
 type WriteRpc = Exclude<keyof OfferRpcContracts, "offer_effective_status">;
 const fields = {
   id: "string", partner_id: "nullable-string", title: "string", subtitle: "nullable-string",
@@ -51,15 +56,19 @@ export function createOffersWriteRepository(client: OffersWriteClient) {
     let query = client.rpc(name, args).retry(false);
     if (options.signal) query = query.abortSignal(options.signal);
     await life.prepareDispatch();
+    await life.verifyBeforeDispatch();
     life.markDispatched();
     let response;
     try { response = await query; }
     catch { return { outcome: "uncertain", id: target, error: life.interruption() }; }
     if (response.error) {
-      if (response.status === 0 || response.status >= 500) return { outcome: "uncertain", id: target, error: life.interruption() };
+      if (!isDefinitiveDatabaseRejection(response.error.code, response.status)) return { outcome: "uncertain", id: target, error: life.interruption() };
       // Exact migration-defined sentinel only; never propagate the raw server message.
-      if (response.error.code === "P0001" && response.error.message === "Unknown Offer") throw new MutationError("missing", "P0001", response.status);
-      throw classifyMutationRejection(response.error.code, response.status);
+      const error = response.error.code === "P0001" && response.error.message === "Unknown Offer"
+        ? new MutationError("missing", "P0001", response.status)
+        : classifyMutationRejection(response.error.code, response.status);
+      rejectedWrites.add(error);
+      throw error;
     }
     if (response.status < 200 || response.status >= 300) return { outcome: "uncertain", id: target, error: new MutationError("response") };
     if (name === "soft_delete_offer") {

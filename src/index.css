@@ -23,26 +23,61 @@ body {
   height: 45px;
   width: auto;
 }
+.cms-brand-name {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+.cms-brand-description {
+  font-size: var(--typography-caption-font-size);
+  line-height: var(--typography-caption-line-height);
+}
 .cms-nav-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.cms-nav-actions > button {
+  flex-shrink: 0;
+}
+.cms-nav-actions .cms-theme-toggle {
+  width: calc(var(--spacing-10) + var(--spacing-1));
+  height: calc(var(--spacing-8) + var(--spacing-1));
 }
 .cms-admin {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-1);
+  min-width: 0;
+  padding: var(--spacing-1) var(--spacing-2);
+  border-left: var(--stroke-default) solid var(--color-foundation-border);
   color: var(--color-content-foreground-muted);
-  font-weight: 600;
+  font-size: var(--typography-label-sm-font-size);
+  font-weight: var(--typography-label-sm-font-weight);
+  line-height: var(--typography-label-sm-line-height);
+}
+.cms-admin-email {
+  max-width: calc(var(--spacing-12) * 4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cms-avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 var(--spacing-6);
+  width: var(--spacing-6);
+  height: var(--spacing-6);
   border-radius: var(--radius-full);
+  font-size: var(--typography-label-md-font-size);
+  line-height: var(--typography-label-md-line-height);
   color: var(--color-foundation-background);
-  background: var(--color-branding-accent);
+  background: var(--color-content-foreground-muted);
+}
+.cms-signout-feedback {
+  padding: var(--spacing-2) var(--spacing-4);
 }
 main {
   padding: var(--spacing-8) var(--spacing-12);

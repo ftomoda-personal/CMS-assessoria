@@ -1,8 +1,43 @@
-.partner-list { position: relative; display: flex; flex-direction: column; align-items: stretch; min-width: 1302px; min-height: calc(100svh - var(--spacing-16) - var(--stroke-default) - 2 * var(--spacing-8)); }
-.partner-list-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.partner-list-header p { padding-top: var(--spacing-1); font-weight: var(--typography-label-lg-font-weight); }
+.partner-list { position: relative; }
 .partner-search { padding-block: var(--spacing-4); }
-.partner-search-field { width: 320px; }
-.partner-filters { padding-block: var(--spacing-2); }
-.partner-list-footer { margin-top: auto; margin-inline: calc(-1 * var(--spacing-12)); margin-bottom: calc(-1 * var(--spacing-8)); padding: var(--spacing-4) var(--spacing-12); border-top: var(--stroke-default) solid var(--color-foundation-border); }
+.partner-search-field { width: min(320px, 100%); }
+.partner-col-name { width: 12.3%; }
+.partner-col-count { width: 12.3%; }
+.partner-col-status { width: 12.3%; }
+.partner-col-actions { width: 12.3%; }
+.partner-mobile-name, .partner-compact-counts { display: none; }
 .partner-empty-summary { color: var(--color-content-foreground-muted); }
+@media (max-width: 1063px) {
+  .partner-desktop-only { display: none; }
+  .partner-col-name, .partner-col-count { width: auto; }
+  .partner-col-status { width: 128px; }
+  .partner-col-actions { width: 80px; }
+}
+@media (max-width: 600px) {
+  .partner-search-field { width: 100%; }
+  .partner-wide-count, .partner-wide-name { display: none; }
+  .partner-mobile-name, .partner-compact-counts { display: block; }
+  .partner-col-status { width: 119px; }
+  .partner-col-actions { width: var(--spacing-16); }
+  .partner-table .spectra-table__cell,
+  .partner-table .spectra-table__header-cell { padding-inline: var(--spacing-2); }
+  .partner-table .spectra-table__header-cell:first-child { padding-inline-start: var(--spacing-4); }
+  .partner-compact-counts {
+    margin-top: var(--spacing-1);
+    font-size: var(--typography-caption-font-size);
+    line-height: var(--typography-caption-line-height);
+  }
+  .partner-compact-counts dl { display: flex; flex-wrap: wrap; gap: var(--spacing-2); margin: 0; }
+  .partner-compact-counts dl > div { display: flex; align-items: center; gap: var(--spacing-1); }
+  .partner-compact-counts dd {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    min-height: 22px;
+    margin: 0;
+    padding-inline: var(--spacing-1);
+    border-radius: var(--radius-full);
+    background: var(--color-foundation-surface-strong);
+    color: var(--color-content-foreground-muted);
+  }
+}

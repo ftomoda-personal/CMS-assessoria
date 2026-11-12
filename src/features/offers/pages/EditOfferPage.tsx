@@ -1,13 +1,14 @@
-import { useSyncExternalStore } from "react";
+import { CmsReadNotice } from "../../../app/CmsData";
+import { useCmsData } from "../../../app/useCmsData";
 import { Button } from "@ftomoda/spectra-design-system";
 import { OfferForm } from "../components/OfferForm";
-import { offerRepository } from "../repository";
 import type { OfferNotice } from "../creation";
 import { PageHeader } from "../../../components/PageHeader";
 import { navigate } from "../../../app/routes";
 
 export function EditOfferPage({ offerId, onSaved }: { offerId: string; onSaved: (notice: OfferNotice) => void }) {
-  const { offers } = useSyncExternalStore(offerRepository.subscribe, offerRepository.getSnapshot);
+  const { offers, status } = useCmsData();
+  if (status !== "ready") return <CmsReadNotice />;
   const offer = offers.find(item => item.id === offerId);
   if (!offer) return <>
     <PageHeader title="EDITAR OFERTA" />

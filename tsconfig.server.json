@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["api/**/*.ts", "server/**/*.ts"],
+  "exclude": ["node_modules", "dist"],
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "erasableSyntaxOnly": true
+  }
+}

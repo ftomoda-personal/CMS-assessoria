@@ -1,11 +1,30 @@
-.offer-list { display: flex; flex-direction: column; align-items: stretch; min-width: 1302px; min-height: calc(100svh - var(--spacing-16) - var(--stroke-default) - 2 * var(--spacing-8)); }
-.offer-list-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.offer-list-header p { padding-top: var(--spacing-1); font-weight: var(--typography-label-lg-font-weight); }
 .offer-search { padding-block: var(--spacing-4); }
-.offer-search-field { width: 320px; }
-.offer-filters { padding-block: var(--spacing-2); }
-.offer-partner { display: flex; align-items: center; gap: var(--spacing-2); }
+.offer-search-field { width: min(320px, 100%); }
+.offer-partner { display: flex; align-items: center; gap: var(--spacing-2); min-width: 0; }
 .offer-partner img { flex: 0 0 26px; width: 26px; height: 26px; object-fit: cover; border: var(--stroke-default) solid var(--color-foundation-border); border-radius: 5px; }
+.offer-partner-text { min-width: 0; }
+.offer-compact-title { display: none; }
+.offer-col-partner { width: 12%; }
+.offer-col-status { width: 128px; }
+.offer-col-date { width: 112px; }
+.offer-col-actions { width: 80px; }
 .offer-row-actions { display: flex; justify-content: center; }
-.offer-list-footer { margin-top: auto; margin-inline: calc(-1 * var(--spacing-12)); margin-bottom: calc(-1 * var(--spacing-8)); padding: var(--spacing-4) var(--spacing-12); border-top: var(--stroke-default) solid var(--color-foundation-border); }
 .offer-empty-summary { color: var(--color-content-foreground-muted); }
+@media (max-width: 1063px) {
+  .offer-desktop-only { display: none; }
+  .offer-col-partner { width: auto; }
+  .offer-col-status { width: 120px; }
+  .offer-col-date { width: 115px; }
+  .offer-compact-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 600px) {
+  .offer-search-field { width: 100%; }
+  .offer-date { display: none; }
+  .offer-col-status { width: 119px; }
+  .offer-col-actions { width: var(--spacing-16); }
+  .offer-table .spectra-table__cell { padding-inline: var(--spacing-2); }
+  .offer-table .spectra-table__header-cell { padding-inline: var(--spacing-2); }
+  .offer-table .spectra-table__header-cell:first-child { padding-inline-start: var(--spacing-4); }
+  .offer-partner img { display: none; }
+  .offer-compact-title { font-size: var(--typography-caption-font-size); line-height: var(--typography-caption-line-height); }
+}

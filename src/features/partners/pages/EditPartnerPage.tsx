@@ -1,13 +1,14 @@
-import { useSyncExternalStore } from "react";
+import { CmsReadNotice } from "../../../app/CmsData";
+import { useCmsData } from "../../../app/useCmsData";
 import { Button } from "@ftomoda/spectra-design-system";
 import { PageHeader } from "../../../components/PageHeader";
 import { navigate } from "../../../app/routes";
-import { partnerRepository } from "../repository";
 import { PartnerForm } from "../components/PartnerForm";
 import type { PartnerNotice } from "../components/PartnerForm";
 
 export function EditPartnerPage({ partnerId, onSaved }: { partnerId: string; onSaved: (notice: PartnerNotice) => void }) {
-  const { partners } = useSyncExternalStore(partnerRepository.subscribe, partnerRepository.getSnapshot);
+  const { partners, status } = useCmsData();
+  if (status !== "ready") return <CmsReadNotice />;
   const partner = partners.find(current => current.id === partnerId);
   if (!partner) return <>
     <PageHeader title="EDITAR PARCEIRO" />
