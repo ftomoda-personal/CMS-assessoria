@@ -86,7 +86,7 @@ function files(directory: string): string[] {
 
 test("HTTP factory cannot create Auth/database transports", () => {
   const allowed = new Map([
-    ["server/cms/handler.ts", ["./currentAccount.ts", "./contracts.ts"]],
+    ["server/cms/handler.ts", ["./currentAccountDiagnostics.ts", "./currentAccount.ts", "./contracts.ts"]],
     ["server/cms/contracts.ts", []],
   ]);
   for (const [file, imports] of allowed) {

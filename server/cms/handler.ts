@@ -1,3 +1,4 @@
+import { diagnosticFailure } from './currentAccountDiagnostics.ts';
 import type { createCurrentAccountService } from './currentAccount.ts';
 import type { CmsInfrastructureError, CmsInfrastructureResponse } from "./contracts.ts";
 
@@ -49,10 +50,11 @@ export function createCmsHandler(deps: CmsHandlerDependencies) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let finish: () => void = () => {};
     const cancel = () => { controller.abort(); finish(); };
-    request.signal.addEventListener('abort', cancel, { once: true });
+    const cancelRequest = () => { diagnosticFailure('cancelled'); cancel(); };
+    request.signal.addEventListener('abort', cancelRequest, { once: true });
     const timeout = new Promise<Response>(resolve => {
       finish = () => resolve(respond('backend_unavailable', 503, false));
-      timer = setTimeout(cancel, deps.requestDeadlineMs);
+      timer = setTimeout(() => { diagnosticFailure('deadline_exceeded'); cancel(); }, deps.requestDeadlineMs);
     });
     const work = async (): Promise<Response> => {
       if (request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json')
@@ -79,7 +81,10 @@ export function createCmsHandler(deps: CmsHandlerDependencies) {
       catch { return respond('invalid_request', 400, false); }
       if (!value || typeof value !== 'object' || Array.isArray(value)) return respond('invalid_request', 400, false);
       const input = value as Record<string, unknown>;
-      if (input.operation !== 'current-account') return respond('backend_unavailable', 503, false);
+      if (input.operation !== 'current-account') {
+        diagnosticFailure('operation_unsupported');
+        return respond('backend_unavailable', 503, false);
+      }
       if (Object.keys(input).length !== 1) return respond('invalid_request', 400, false);
       const result = await deps.currentAccount.query(request.headers, controller.signal);
       if (controller.signal.aborted || performance.now() - started >= deps.requestDeadlineMs) return respond('backend_unavailable', 503, false);
@@ -98,6 +103,6 @@ export function createCmsHandler(deps: CmsHandlerDependencies) {
         ? respond('backend_unavailable', 503, false) : result;
     }
     catch { return respond('backend_unavailable', 503, false); }
-    finally { clearTimeout(timer);request.signal.removeEventListener('abort', cancel);controller.abort(); }
+    finally { clearTimeout(timer);request.signal.removeEventListener('abort', cancelRequest);controller.abort(); }
   };
 }

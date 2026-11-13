@@ -1,3 +1,4 @@
+import { diagnoseCurrentAccount, initializationFailure } from './currentAccountDiagnostics.ts';
 import { X509Certificate } from 'node:crypto';
 import { CURRENT_ACCOUNT_STAGING_REF } from './administrativePgConnector.ts';
 import { createCurrentAccountComposition } from './currentAccountComposition.ts';
@@ -17,15 +18,26 @@ export function bindCurrentAccountPreview(env: NodeJS.ProcessEnv, compose = crea
   if (env.VERCEL_ENV !== 'preview' || env.CMS_RUNTIME_PROFILE !== 'staging-current-account'
     || env.CMS_STAGING_SUPABASE_PROJECT_REF !== CURRENT_ACCOUNT_STAGING_REF) return handleCmsRequest;
 
+  const started = performance.now();
   const databasePassword = env.CMS_STAGING_CURRENT_ACCOUNT_DB_PASSWORD;
   const databaseCa = env.CMS_STAGING_CURRENT_ACCOUNT_DB_CA;
   const publishableKey = env.CMS_STAGING_SUPABASE_PUBLISHABLE_KEY;
-  if (!databasePassword?.trim() || !databaseCa || !publishableKey
-    || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) return handleCmsRequest;
-
+  if (!databasePassword || !databaseCa || !publishableKey) {
+    initializationFailure('config_gate', 'config_missing', started);
+    return handleCmsRequest;
+  }
+  if (!databasePassword.trim() || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) {
+    initializationFailure('config_gate', 'config_invalid', started);
+    return handleCmsRequest;
+  }
   try {
-    if (!isValidCa(databaseCa)) return handleCmsRequest;
-    return compose('staging', { project: {
+    if (!isValidCa(databaseCa)) throw Error('Invalid CA');
+  } catch {
+    initializationFailure('config_gate', 'ca_invalid', started);
+    return handleCmsRequest;
+  }
+  try {
+    return diagnoseCurrentAccount(compose('staging', { project: {
       projectRef: CURRENT_ACCOUNT_STAGING_REF,
       publishableKey,
       databasePassword,
@@ -36,8 +48,9 @@ export function bindCurrentAccountPreview(env: NodeJS.ProcessEnv, compose = crea
       databaseDeadlineMs: 4500,
       authorityDeadlineMs: 6500,
       requestDeadlineMs: 8000,
-    } }).handler;
+    } }).handler);
   } catch {
+    initializationFailure('composition', 'composition_failed', started);
     return handleCmsRequest;
   }
 }

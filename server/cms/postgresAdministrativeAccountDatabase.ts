@@ -1,3 +1,4 @@
+import { diagnosticFailure, diagnosticStage } from './currentAccountDiagnostics.ts';
 import { performance } from 'node:perf_hooks';
 import type { PostgresConnector, PostgresSession, PostgresResult } from '../als/postgresRevocation.ts';
 import type { AdministrativeAccountDatabase, AdministrativeDatabaseRead, AdministrativeAccountProjection } from './administrativeAccountReader.ts';
@@ -25,7 +26,10 @@ function parse(value: unknown, actor?: string): AdministrativeDatabaseRead {
     account: a ? Object.freeze({ user_id: a.user_id, role: a.role, status: a.status }) as AdministrativeAccountProjection : null });
 }
 function ack(result: PostgresResult, command: string, status: PostgresResult['transactionStatus']) {
-  if (result.command !== command || result.transactionStatus !== status) throw Error('Unconfirmed command');
+  if (result.command !== command || result.transactionStatus !== status) {
+    diagnosticFailure('protocol_mismatch');
+    throw Error('Unconfirmed command');
+  }
 }
 
 /** Disabled server composition. Inject a qualified dedicated-principal connector.
@@ -88,11 +92,12 @@ function createCmsReaderDatabase(deps: ReaderDatabaseDependencies, reader: 'admi
         signal.addEventListener('abort', cancel, { once: true });
         const timeout = new Promise<AdministrativeDatabaseRead>(resolve => {
           controller.signal.addEventListener('abort', () => resolve(unavailable), { once: true });
-          timer = setTimeout(cancel, deadlineMs);
+          timer = setTimeout(() => { diagnosticFailure('deadline_exceeded'); cancel(); }, deadlineMs);
         });
         const work = async (): Promise<AdministrativeDatabaseRead> => {
           // A connector resolving after timeout still has its late session closed.
           session = await connector.connect(controller.signal);
+          diagnosticStage('pg_transaction_setup');
           try {
             current();
             if (session.initialTransactionStatus !== 'idle') throw Error('Non-idle connection');
@@ -116,18 +121,22 @@ function createCmsReaderDatabase(deps: ReaderDatabaseDependencies, reader: 'admi
             if (identity.rowCount !== 1 || identity.rows.length !== 1 || !isCmsReaderIdentity(context, role, stagingCurrentAccount)
               || context.read_only !== true || context.isolation !== 'read committed'
               || context.search_path !== 'pg_catalog'
-              || context.statement_timeout_ms !== statementTimeoutMs) throw Error('Unqualified transaction');
+              || context.statement_timeout_ms !== statementTimeoutMs) { diagnosticFailure('identity_mismatch'); throw Error('Unqualified transaction'); }
             // Setup may have consumed its reserve: stop, do not reconfigure/retry.
             if (statementTimeoutMs + shutdownMarginMs > queryTimeoutMs
               || statementTimeoutMs + shutdownMarginMs > Math.floor(deadlineMs - (performance.now() - started))) {
               throw Error('Insufficient remaining query budget');
             }
+            diagnosticStage('pg_read_current_account');
             const response = await session.query(read, [actorUserId], controller.signal); current();
             ack(response, 'SELECT', 'transaction');
-            if (response.rowCount !== 1 || response.rows.length !== 1) throw Error('Invalid rows');
+            if (response.rowCount !== 1 || response.rows.length !== 1) { diagnosticFailure('result_invalid'); throw Error('Invalid rows'); }
             const row = record(response.rows[0]);
-            if (!row || Object.keys(row).length !== 1 || !Object.hasOwn(row, 'result')) throw Error('Invalid result');
-            const data = parse(row.result, reader === 'administrative' ? actorUserId : undefined);
+            if (!row || Object.keys(row).length !== 1 || !Object.hasOwn(row, 'result')) { diagnosticFailure('result_invalid'); throw Error('Invalid result'); }
+            let data;
+            try { data = parse(row.result, reader === 'administrative' ? actorUserId : undefined); }
+            catch (error) { diagnosticFailure('result_invalid'); throw error; }
+            diagnosticStage('pg_commit');
             ack(await session.query('COMMIT', [], controller.signal), 'COMMIT', 'idle'); current();
             return data;
           } finally { discard(); }

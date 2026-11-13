@@ -1,3 +1,4 @@
+import { diagnosticError, diagnosticFailure, diagnosticStage } from './currentAccountDiagnostics.ts';
 import { Socket } from "node:net";
 import { performance } from "node:perf_hooks";
 import { Client } from "pg";
@@ -166,7 +167,7 @@ export function createCmsReaderPgTransport(input: Omit<AdministrativePgConnector
             new Promise<never>((_resolve, reject) => {
               onAbort = () => { discard(); reject(fail()); };
               abort.addEventListener("abort", onAbort, { once: true });
-              timer = setTimeout(onAbort, timeout);
+              timer = setTimeout(() => { diagnosticFailure('deadline_exceeded'); onAbort?.(); }, timeout);
             }),
             Promise.resolve().then(() => {
               if (closed || abort.aborted) throw fail();
@@ -177,7 +178,7 @@ export function createCmsReaderPgTransport(input: Omit<AdministrativePgConnector
           return result;
         } catch (error) {
           discard();
-          void error;
+          diagnosticError(error, abort.aborted ? 'cancelled' : 'unknown');
           throw fail();
         } finally {
           clearTimeout(timer);
@@ -185,13 +186,15 @@ export function createCmsReaderPgTransport(input: Omit<AdministrativePgConnector
         }
       }
       try {
+        diagnosticStage('pg_connect');
         await bounded(() => client.connect(), signal, config.connectionTimeoutMs);
-        if (status(client) !== "idle") throw fail();
+        diagnosticStage('pg_session_identity');
+        if (status(client) !== "idle") { diagnosticFailure('protocol_mismatch'); throw fail(); }
         const identity = await bounded(() => client.query({ text: identitySql,
           values: [], queryMode: 'extended' } as QueryConfig), signal, config.queryTimeoutMs);
         const row = identity.rows[0];
-        if (identity.command !== "SELECT" || identity.rowCount !== 1 || identity.rows.length !== 1 || status(client) !== "idle"
-          || !isCmsReaderIdentity(row, role, config.stagingCurrentAccount)) throw fail();
+        if (identity.command !== "SELECT" || identity.rowCount !== 1 || identity.rows.length !== 1 || status(client) !== "idle") { diagnosticFailure('protocol_mismatch'); throw fail(); }
+        if (!isCmsReaderIdentity(row, role, config.stagingCurrentAccount)) { diagnosticFailure('identity_mismatch'); throw fail(); }
         return Object.freeze<PostgresSession & { readonly queryTimeoutMs: number }>({
           initialTransactionStatus: "idle", discard,
           // Trusted lease metadata lets the adapter cap its server timeout below

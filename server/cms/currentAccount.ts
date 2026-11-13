@@ -1,3 +1,4 @@
+import { diagnosticFailure, diagnosticStage } from './currentAccountDiagnostics.ts';
 import { performance } from 'node:perf_hooks';
 import { extractBearer } from '../als/bearer.ts';
 import type { HeaderFields } from '../als/bearer.ts';
@@ -26,6 +27,7 @@ const uuid = (v: unknown): v is string => typeof v === 'string'
   && v !== '00000000-0000-0000-0000-000000000000';
 const record = (v: unknown): Record<string, unknown> | null => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 function authFailure(error: { status?: number; name?: string } | null): CurrentAccountLookup {
+  if (!(error && (error.status === 401 || error.status === 403 || error.name === 'AuthInvalidJwtError'))) diagnosticFailure('upstream_unavailable');
   return { kind: error && (error.status === 401 || error.status === 403 || error.name === 'AuthInvalidJwtError') ? 'unauthenticated' : 'unavailable' };
 }
 /** Point-in-time Supabase Auth + current DB authority; NOT ALS-equivalent.
@@ -54,10 +56,11 @@ export function createCurrentAccountService(deps: CurrentAccountDependencies) {
       signal?.addEventListener('abort', cancel, { once: true });
       const timeout = new Promise<CurrentAccountLookup>(resolve => {
         controller.signal.addEventListener('abort', () => resolve(unavailable), { once: true });
-        timer = setTimeout(cancel, deps.deadlineMs);
+        timer = setTimeout(() => { diagnosticFailure('deadline_exceeded'); cancel(); }, deps.deadlineMs);
       });
       const work = async (): Promise<CurrentAccountLookup> => {
         current();
+        diagnosticStage('auth_claims');
         const auth = deps.createAuth(controller.signal);
         const verified = await auth.getClaims(token, { allowExpired: false }); current();
         if (verified.error || !verified.data) return authFailure(verified.error);
@@ -68,17 +71,20 @@ export function createCurrentAccountService(deps: CurrentAccountDependencies) {
           || !Number.isSafeInteger(claims.exp) || claims.exp <= now
           || (claims.nbf !== undefined && (!Number.isSafeInteger(claims.nbf) || claims.nbf > now))) return { kind: 'unauthenticated' };
         expiresAt = claims.exp;
+        diagnosticStage('auth_user');
         const user = await auth.getUser(token); current();
         if (user.error || !user.data.user) return authFailure(user.error);
         if (user.data.user.id !== actor) return { kind: 'unauthenticated' };
         const raw = record(await deps.readCurrentAccount(actor, controller.signal)); current();
-        if (!raw || Object.keys(raw).sort().join() !== 'account,membership') return unavailable;
+        diagnosticStage('pg_read_current_account');
+        const invalidResult = () => { diagnosticFailure('result_invalid'); return unavailable; };
+        if (!raw || Object.keys(raw).sort().join() !== 'account,membership') return invalidResult();
         if (raw.account === null) return { kind: 'forbidden' };
         const account = record(raw.account); const member = record(raw.membership);
         if (!account || Object.keys(account).sort().join() !== 'role,status,user_id'
           || !uuid(account.user_id) || (account.role !== 'student' && account.role !== 'administrator')
-          || (account.status !== 'active' && account.status !== 'pending_invitation' && account.status !== 'disabled')) return unavailable;
-        if (raw.membership !== null && (!member || Object.keys(member).join() !== 'user_id' || !uuid(member.user_id))) return unavailable;
+          || (account.status !== 'active' && account.status !== 'pending_invitation' && account.status !== 'disabled')) return invalidResult();
+        if (raw.membership !== null && (!member || Object.keys(member).join() !== 'user_id' || !uuid(member.user_id))) return invalidResult();
         if (account.user_id !== actor || (member && member.user_id !== actor)) return { kind: 'forbidden' };
         const projection: Pick<AccountRow, 'user_id' | 'role' | 'status'> = {
           user_id: account.user_id, role: account.role, status: account.status };

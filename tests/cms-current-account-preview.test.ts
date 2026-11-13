@@ -41,11 +41,14 @@ for (const [label, overrides] of Object.entries({
   'key absent': { CMS_STAGING_SUPABASE_PUBLISHABLE_KEY: undefined },
   'key invalid': { CMS_STAGING_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_synthetic' },
 })) {
-  test(`binding fails closed when ${label}`, async () => {
-    const compose = () => assert.fail('must not compose');
+  test(`binding fails closed when ${label}`, async t => {
+    const warn = t.mock.method(console, 'warn', () => {});
+    const compose = t.mock.fn(() => assert.fail('must not compose'));
     const handler = bindCurrentAccountPreview({ ...env, ...overrides }, compose);
     assert.equal(handler, handleCmsRequest);
     assert.equal((await handler(request())).status, 503);
+    assert.equal(compose.mock.callCount(), 0);
+    assert.equal(warn.mock.callCount(), Object.keys(overrides).some(key => ['VERCEL_ENV', 'CMS_RUNTIME_PROFILE', 'CMS_STAGING_SUPABASE_PROJECT_REF'].includes(key)) ? 0 : 1);
   });
 }
 
@@ -59,5 +62,8 @@ test('composition errors containing configuration are absent from logs and respo
   const response = await handler(request());
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), await handleCmsRequest(request()).json());
-  for (const log of logs) assert.equal(log.mock.callCount(), 0);
+  assert.equal(logs[2].mock.callCount(), 1);
+  const event = JSON.parse(logs[2].mock.calls[0].arguments[0]);
+  assert.deepEqual(event, { event: 'cms.current_account.unavailable', stage: 'composition', category: 'composition_failed', duration_ms: event.duration_ms });
+  for (const log of logs.filter((_, i) => i !== 2)) assert.equal(log.mock.callCount(), 0);
 });
