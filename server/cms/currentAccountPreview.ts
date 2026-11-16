@@ -37,18 +37,21 @@ export function bindCurrentAccountPreview(env: NodeJS.ProcessEnv, compose = crea
     return handleCmsRequest;
   }
   try {
-    return diagnoseCurrentAccount(compose('staging', { project: {
-      projectRef: CURRENT_ACCOUNT_STAGING_REF,
-      publishableKey,
-      databasePassword,
-      databaseCa,
-      connectionTimeoutMs: 2000,
-      queryTimeoutMs: 1500,
-      shutdownMarginMs: 100,
-      databaseDeadlineMs: 4500,
-      authorityDeadlineMs: 6500,
-      requestDeadlineMs: 8000,
-    } }).handler);
+    return diagnoseCurrentAccount(compose('staging', {
+      stagingSessionPooler: env.VERCEL_GIT_COMMIT_REF === 'staging/current-account',
+      project: {
+        projectRef: CURRENT_ACCOUNT_STAGING_REF,
+        publishableKey,
+        databasePassword,
+        databaseCa,
+        connectionTimeoutMs: 2000,
+        queryTimeoutMs: 1500,
+        shutdownMarginMs: 100,
+        databaseDeadlineMs: 4500,
+        authorityDeadlineMs: 6500,
+        requestDeadlineMs: 8000,
+      },
+    }).handler);
   } catch {
     initializationFailure('composition', 'composition_failed', started);
     return handleCmsRequest;

@@ -11,6 +11,7 @@ const ca = rootCertificates.find(pem => {
 })!;
 const env = {
   VERCEL_ENV: 'preview',
+  VERCEL_GIT_COMMIT_REF: 'staging/current-account',
   CMS_RUNTIME_PROFILE: 'staging-current-account',
   CMS_STAGING_SUPABASE_PROJECT_REF: 'uhgeboelkbygidmhlugh',
   CMS_STAGING_CURRENT_ACCOUNT_DB_PASSWORD: 'synthetic-password',
@@ -30,6 +31,7 @@ test('complete Preview uses the real composition and rejects absent Auth before 
 });
 
 for (const [label, overrides] of Object.entries({
+  'wrong profile': { CMS_RUNTIME_PROFILE: 'other' },
   'profile absent': { CMS_RUNTIME_PROFILE: undefined },
   Production: { VERCEL_ENV: 'production' },
   Development: { VERCEL_ENV: 'development' },
@@ -49,6 +51,21 @@ for (const [label, overrides] of Object.entries({
     assert.equal((await handler(request())).status, 503);
     assert.equal(compose.mock.callCount(), 0);
     assert.equal(warn.mock.callCount(), Object.keys(overrides).some(key => ['VERCEL_ENV', 'CMS_RUNTIME_PROFILE', 'CMS_STAGING_SUPABASE_PROJECT_REF'].includes(key)) ? 0 : 1);
+  });
+}
+
+for (const [branch, selectsPooler] of [
+  ['staging/current-account', true],
+  ['staging/other', false],
+  [undefined, false],
+] as const) {
+  test(`Preview transport selection for branch ${branch}`, t => {
+    const compose = t.mock.fn<typeof import('../server/cms/currentAccountComposition.ts').createCurrentAccountComposition>(
+      () => ({ handler: handleCmsRequest, authorizeAdministrativeOperation: () => assert.fail('unexpected authority') }),
+    );
+    bindCurrentAccountPreview({ ...env, VERCEL_GIT_COMMIT_REF: branch }, compose);
+    assert.equal(compose.mock.callCount(), 1);
+    assert.equal(compose.mock.calls[0].arguments[1].stagingSessionPooler, selectsPooler);
   });
 }
 

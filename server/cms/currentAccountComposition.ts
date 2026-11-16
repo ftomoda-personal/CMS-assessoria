@@ -1,5 +1,5 @@
 import { createAdministrativeOperationAuthority } from './administrativeOperationAuthority.ts';
-import { createCmsReaderPgTransport, CURRENT_ACCOUNT_STAGING_REF } from './administrativePgConnector.ts';
+import { createCmsReaderPgTransport, CURRENT_ACCOUNT_STAGING_REF, CURRENT_ACCOUNT_STAGING_SESSION_POOLER } from './administrativePgConnector.ts';
 import { createSupabaseCurrentAccountService } from './currentAccount.ts';
 import { createCmsHandler } from './handler.ts';
 import { createPostgresCurrentAccountReader, CURRENT_ACCOUNT_SQL_ROLE } from './postgresAdministrativeAccountDatabase.ts';
@@ -25,12 +25,13 @@ function validDuration(value: number) {
 
 /** Call only from a separately approved server entrypoint. No automatic env
  * lookup, fallback credentials, shared project, or browser configuration.
- * Uses the project-bound direct PostgreSQL host, which must be reachable from
- * the server runtime and independently qualified for TLS and privileges.
+ * Defaults to the project-bound direct PostgreSQL host. The staging Preview
+ * entrypoint can select the fixed Session Pooler profile.
  */
 export function createCurrentAccountComposition(environment: Environment, config: {
   readonly projectRefs?: Readonly<Record<Environment, string>>;
   readonly project: ProjectConfig;
+  readonly stagingSessionPooler?: boolean;
 }) {
   const { project, projectRefs } = config;
   if ((environment !== 'staging' && environment !== 'production')
@@ -51,12 +52,19 @@ export function createCurrentAccountComposition(environment: Environment, config
   }
 
   const stagingCurrentAccount = environment === 'staging' && project.projectRef === CURRENT_ACCOUNT_STAGING_REF;
-  const connector = createCmsReaderPgTransport({
+  if (config.stagingSessionPooler && (!stagingCurrentAccount || !project.databaseCa)) {
+    throw Error('Invalid current account server configuration');
+  }
+  const endpoint = config.stagingSessionPooler ? CURRENT_ACCOUNT_STAGING_SESSION_POOLER : {
     host: `db.${project.projectRef}.supabase.co`,
     port: 5432,
     database: 'postgres',
     connectionUser: CURRENT_ACCOUNT_SQL_ROLE,
+  };
+  const connector = createCmsReaderPgTransport({
+    ...endpoint,
     stagingCurrentAccount,
+    stagingSessionPooler: config.stagingSessionPooler,
     password: project.databasePassword,
     tls: { ca: project.databaseCa },
     connectionTimeoutMs: project.connectionTimeoutMs,

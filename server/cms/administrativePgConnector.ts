@@ -8,6 +8,12 @@ import type { PostgresConnector, PostgresResult, PostgresSession } from "../als/
 export const ADMINISTRATIVE_SQL_ROLE = 'cms_admin_reader_runtime';
 export const CURRENT_ACCOUNT_SQL_ROLE = 'cms_current_account_runtime';
 export const CURRENT_ACCOUNT_STAGING_REF = 'uhgeboelkbygidmhlugh';
+export const CURRENT_ACCOUNT_STAGING_SESSION_POOLER = Object.freeze({
+  host: 'aws-1-sa-east-1.pooler.supabase.com',
+  port: 5432,
+  database: 'postgres',
+  connectionUser: `${CURRENT_ACCOUNT_SQL_ROLE}.${CURRENT_ACCOUNT_STAGING_REF}`,
+});
 const connectionUser = 'cms_admin_reader_runtime.uhgeboelkbygidmhlugh';
 const poolerHost = 'aws-1-sa-east-1.pooler.supabase.com';
 
@@ -125,10 +131,19 @@ export function createAdministrativePgConnector(input: AdministrativePgConnector
 export function createCmsReaderPgTransport(input: Omit<AdministrativePgConnectorConfig, 'connectionUser'> & {
   readonly connectionUser: string;
   readonly stagingCurrentAccount?: boolean;
+  readonly stagingSessionPooler?: boolean;
 }, role: string, transportFactory: AdministrativePgTransportFactory = config => new Client(config)): PostgresConnector {
-  if (input.stagingCurrentAccount && (role !== CURRENT_ACCOUNT_SQL_ROLE
-    || input.connectionUser !== role || input.host !== `db.${CURRENT_ACCOUNT_STAGING_REF}.supabase.co`
-    || input.port !== 5432 || input.database !== 'postgres')) throw fail();
+  if (input.stagingSessionPooler && !input.stagingCurrentAccount) throw fail();
+  if (input.stagingCurrentAccount) {
+    const endpoint = input.stagingSessionPooler ? CURRENT_ACCOUNT_STAGING_SESSION_POOLER : {
+      host: `db.${CURRENT_ACCOUNT_STAGING_REF}.supabase.co`,
+      port: 5432, database: 'postgres', connectionUser: role,
+    };
+    if (role !== CURRENT_ACCOUNT_SQL_ROLE || input.host !== endpoint.host
+      || input.port !== endpoint.port || input.database !== endpoint.database
+      || input.connectionUser !== endpoint.connectionUser
+      || (input.stagingSessionPooler && !input.tls.ca)) throw fail();
+  }
   const identitySql = input.stagingCurrentAccount ? STAGING_CURRENT_ACCOUNT_IDENTITY_SQL : ADMINISTRATIVE_IDENTITY_SQL;
   rejectAmbientStartupOptions();
   const config = Object.freeze({ ...input, tls: Object.freeze({ ca: input.tls.ca, servername: input.host }) });

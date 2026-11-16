@@ -291,8 +291,17 @@ const stagingConfig = {
   connectionTimeoutMs: 1000, queryTimeoutMs: 1000, stagingCurrentAccount: true,
 };
 
+const poolerConfig = {
+  ...stagingConfig,
+  host: 'aws-1-sa-east-1.pooler.supabase.com',
+  connectionUser: 'cms_current_account_runtime.uhgeboelkbygidmhlugh',
+  stagingSessionPooler: true,
+  tls: { ca: 'synthetic-ca' },
+};
+
 for (const [label, memberships] of [
   ['approved', [approvedMembership]],
+  ['tenant-qualified SQL login', [approvedMembership]],
   ['missing', null],
   ['reversed', [[false, false, 10, true, false, false]]],
   ['wrong member', [[true, false, 10, true, false, false]]],
@@ -304,7 +313,7 @@ for (const [label, memberships] of [
 ] as const) {
   for (const rejectedAt of ['connect', 'transaction'] as const) {
     if (label === 'approved' && rejectedAt === 'transaction') continue;
-    test(`staging membership ${label} at ${rejectedAt}`, async () => {
+    test(`Session Pooler identity ${label} at ${rejectedAt}`, async () => {
       let state = 'I';
       let timeout = 0;
       let ends = 0;
@@ -317,7 +326,9 @@ for (const [label, memberships] of [
         async query(query) {
           const step = phase(query.text);
           phases.push(step);
-          if (step === 'BEGIN') { state = 'T'; return { command: 'BEGIN', rowCount: null, rows: [] }; }
+          if (step === 'BEGIN') {
+            assert.equal(query.text, 'BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY');
+            state = 'T'; return { command: 'BEGIN', rowCount: null, rows: [] }; }
           if (step === 'COMMIT') { state = 'I'; return { command: 'COMMIT', rowCount: null, rows: [] }; }
           if (step === 'CONFIGURE') {
             timeout = Number(String(query.values?.[1]).slice(0, -2));
@@ -327,13 +338,24 @@ for (const [label, memberships] of [
             assert.equal(query.text, STAGING_CURRENT_ACCOUNT_IDENTITY_SQL);
             const checkpoint = state === 'T' ? 'transaction' : 'connect';
             return { command: 'SELECT', rowCount: 1, rows: [{ ...identity(), role: CURRENT_ACCOUNT_SQL_ROLE,
-              login: CURRENT_ACCOUNT_SQL_ROLE, read_only: state === 'T', statement_timeout_ms: timeout,
+              login: label === 'tenant-qualified SQL login' && checkpoint === rejectedAt
+                ? poolerConfig.connectionUser : CURRENT_ACCOUNT_SQL_ROLE, read_only: state === 'T', statement_timeout_ms: timeout,
               memberships: checkpoint === rejectedAt ? memberships : [approvedMembership] }] };
           }
+          assert.equal(query.text, 'SELECT cms_private.read_current_account($1::uuid) AS result');
+          assert.deepEqual(query.values, [actor]);
           return { command: 'SELECT', rowCount: 1, rows: [{ result: data() }] };
         },
       };
-      const connector = createCmsReaderPgTransport(stagingConfig, CURRENT_ACCOUNT_SQL_ROLE, () => transport);
+      let creations = 0;
+      const connector = createCmsReaderPgTransport(poolerConfig, CURRENT_ACCOUNT_SQL_ROLE, config => {
+        creations++;
+        assert.deepEqual([config.host, config.port, config.database, config.user], [
+          poolerConfig.host, 5432, 'postgres', poolerConfig.connectionUser,
+        ]);
+        assert.deepEqual(config.ssl, { ca: 'synthetic-ca', servername: poolerConfig.host, rejectUnauthorized: true });
+        return transport;
+      });
       const read = createPostgresCurrentAccountReader({ connector, deadlineMs: 1000, shutdownMarginMs: 100,
         stagingCurrentAccount: true });
       if (label === 'approved') {
@@ -345,6 +367,7 @@ for (const [label, memberships] of [
         assert.deepEqual(phases, rejectedAt === 'connect' ? ['IDENTITY'] : ['IDENTITY', 'BEGIN', 'CONFIGURE', 'IDENTITY']);
       }
       assert.equal(ends, 1);
+      assert.equal(creations, 1);
     });
   }
 }
@@ -353,3 +376,49 @@ test('staging membership profile cannot be selected for a different host or role
   assert.throws(() => createCmsReaderPgTransport({ ...stagingConfig, host: 'db.other.invalid' }, CURRENT_ACCOUNT_SQL_ROLE));
   assert.throws(() => createCmsReaderPgTransport(stagingConfig, 'cms_admin_reader_runtime'));
 });
+
+test('direct staging uses the original endpoint and SQL role as login', async () => {
+  const connector = createCmsReaderPgTransport(stagingConfig, CURRENT_ACCOUNT_SQL_ROLE, config => {
+    assert.equal(config.host, stagingConfig.host);
+    assert.equal(config.user, CURRENT_ACCOUNT_SQL_ROLE);
+    return {
+      async connect() {}, async end() {}, on() {}, getTransactionStatus() { return 'I'; },
+      async query(input) {
+        assert.equal(input.text, STAGING_CURRENT_ACCOUNT_IDENTITY_SQL);
+        return { command: 'SELECT', rowCount: 1, rows: [{ ...identity(), role: CURRENT_ACCOUNT_SQL_ROLE,
+          login: CURRENT_ACCOUNT_SQL_ROLE, memberships: [approvedMembership] }] };
+      },
+    };
+  });
+  (await connector.connect(signal())).discard();
+});
+
+test('invalid pooler configuration is rejected before a transport can be created', () => {
+  for (const overrides of [{ ...stagingConfig, stagingSessionPooler: true }, { tls: {} },
+    { port: 6543 }, { database: 'other' }, { stagingCurrentAccount: false },
+    { connectionUser: CURRENT_ACCOUNT_SQL_ROLE }]) {
+    assert.throws(() => createCmsReaderPgTransport({ ...poolerConfig, ...overrides },
+      CURRENT_ACCOUNT_SQL_ROLE, () => assert.fail('unexpected transport')));
+  }
+});
+
+for (const hanging of ['connect', 'query'] as const) {
+  test(`Session Pooler ${hanging} timeout closes one transport without retry or fallback`, async () => {
+    let creations = 0;
+    let ends = 0;
+    const connector = createCmsReaderPgTransport({ ...poolerConfig, connectionTimeoutMs: 20,
+      queryTimeoutMs: 20 }, CURRENT_ACCOUNT_SQL_ROLE, () => {
+      creations++;
+      return {
+        async connect() { if (hanging === 'connect') await new Promise(() => {}); },
+        async end() { ends++; },
+        on() {},
+        getTransactionStatus() { return 'I'; },
+        query() { return new Promise(() => {}); },
+      };
+    });
+    await assert.rejects(connector.connect(signal()), /PostgreSQL transport unavailable/);
+    assert.equal(creations, 1);
+    assert.equal(ends, 1);
+  });
+}
